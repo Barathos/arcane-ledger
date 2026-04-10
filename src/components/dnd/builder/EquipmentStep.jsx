@@ -228,8 +228,8 @@ export default function EquipmentStep({ character, updateCharacter }) {
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
-    loadEquipmentIndex().then(data => { setItems(data); setLoading(false); })
-      .catch(() => setLoading(false));
+    loadEquipmentIndex().then(data => { console.log('[Equip] loaded', data.length, 'items, rings:', data.filter(i=>i.category==='Ring').length); setItems(data); setLoading(false); })
+      .catch(err => { console.error('[Equip] failed', err); setLoading(false); });
   }, []);
 
   const sources = useMemo(() => {
