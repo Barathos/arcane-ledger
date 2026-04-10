@@ -22,9 +22,9 @@ function roll4d6DropLowest() {
     Math.ceil(Math.random() * 6),
   ];
   const min = Math.min(...rolls);
-  const idx = rolls.indexOf(min);
-  const kept = [...rolls.slice(0, idx), ...rolls.slice(idx + 1)];
-  return { total: kept.reduce((a, b) => a + b, 0), rolls, dropped: min };
+  const droppedIdx = rolls.indexOf(min);
+  const kept = rolls.filter((_, i) => i !== droppedIdx);
+  return { total: kept.reduce((a, b) => a + b, 0), rolls, droppedIdx };
 }
 
 export default function AbilityStep({ character, updateCharacter }) {
@@ -147,7 +147,7 @@ export default function AbilityStep({ character, updateCharacter }) {
                         <div className="font-cinzel text-2xl font-bold text-primary">{r.total}</div>
                         <div className="text-xs text-muted-foreground font-crimson mt-0.5">
                           [{r.rolls.map((d, di) => (
-                            <span key={di} className={d === r.dropped ? 'line-through text-red-400/60' : ''}>
+                            <span key={di} className={di === r.droppedIdx ? 'line-through text-red-400/60' : ''}>
                               {di > 0 ? ',' : ''}{d}
                             </span>
                           ))}]
