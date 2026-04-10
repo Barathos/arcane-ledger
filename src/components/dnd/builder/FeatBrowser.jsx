@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { loadFeatDatabase, getFeatDatabase, FEAT_CATEGORIES, loadFeatDescriptions, getFeatDescription } from '../../../lib/featDatabase';
-import { checkAllPrereqs, getTotalLevel } from '../../../lib/characterEngine';
+import { checkAllPrereqs, getTotalLevel, buildCharacterState, SKILL_LIST } from '../../../lib/characterEngine';
 import { X } from 'lucide-react';
 
 const COMMON_WEAPONS = ['Longsword','Shortsword','Rapier','Greatsword','Battleaxe','Greataxe','Dagger','Handaxe','Warhammer','Longbow','Shortbow','Crossbow, Heavy','Spear','Quarterstaff','Flail','Mace, Heavy'];
@@ -11,6 +11,51 @@ const WEAPON_SELECT_FEATS = ['fWepFoc','fWepSpec','fImpCrit','fGreWepFoc','fGreW
 
 function needsWeaponSelect(featId) {
   return WEAPON_SELECT_FEATS.some(prefix => featId?.startsWith(prefix));
+}
+
+function getPrereqCurrentValue(expr, cs) {
+  const abilMap = { aSTR:'STR', aDEX:'DEX', aCON:'CON', aINT:'INT', aWIS:'WIS', aCHA:'CHA' };
+  for (const [key, stat] of Object.entries(abilMap)) {
+    if (expr.includes(`child[${key}]`)) return cs[stat];
+  }
+  if (expr.includes('tAtkBase')) return `+${cs.BAB}`;
+  const skM = expr.match(/#skillranks\[(\w+)\]/) || expr.match(/childfound\[(\w+)\]\.field\[kUserRanks\]/);
+  if (skM) {
+    const ranks = cs.skillRanks[skM[1]] || 0;
+    const skillName = SKILL_LIST.find(s => s.id === skM[1])?.name || skM[1];
+    return `${ranks} ranks in ${skillName}`;
+  }
+  if (expr.includes('herofield[tLevel]') || expr.includes('#totallevelcount')) return `Level ${cs.totalLevel}`;
+  const clsM = expr.match(/#levelcount\[(\w+)\]/) || expr.match(/tagcount\[Classes\.(\w+)\]/);
+  if (clsM) return `${cs.classLevel(clsM[1])} levels in ${clsM[1]}`;
+  const svM = expr.match(/child\[v(Fort|Ref|Will)\]\.field\[vBase\]\.value/);
+  if (svM) return `Base ${svM[1]} +${cs[svM[1].toLowerCase() + 'Base']}`;
+  const fM = expr.match(/#hasfeat\[(\w+)\]/);
+  if (fM) return cs.featIds.has(fM[1]) ? 'Have it' : 'Not taken';
+  if (expr.includes('tagcount[Hero.Arcane]')) {
+    const m = expr.match(/tagcount\[Hero\.Arcane\]\s*>=\s*(\d+)/);
+    return `Arcane level ${cs.maxArcaneLevel} (need ${m ? m[1] : '?'})`;
+  }
+  if (expr.includes('tagcount[Hero.Divine]')) return `Divine level ${cs.maxDivineLevel}`;
+  if (expr.includes('xSneakAtt')) return `Sneak attack ${cs.sneakAttack}d6`;
+  return null;
+}
+
+function PrereqRow({ prereq, passed, unknown, charState }) {
+  const currentValue = (!passed && !unknown) ? getPrereqCurrentValue(prereq.expr, charState) : null;
+  return (
+    <div className="flex items-start gap-2 text-xs font-crimson py-0.5">
+      <span className={`mt-0.5 shrink-0 ${passed ? 'text-green-400' : unknown ? 'text-yellow-400' : 'text-red-400'}`}>
+        {passed ? '✓' : unknown ? '⚠' : '✗'}
+      </span>
+      <span className={passed ? 'text-green-400/80' : unknown ? 'text-yellow-400/80' : 'text-red-400/80'}>
+        {prereq.message}
+        {currentValue !== null && (
+          <span className="text-muted-foreground ml-1 italic">— Current: {currentValue}</span>
+        )}
+      </span>
+    </div>
+  );
 }
 
 function renderMarkdown(text) {
@@ -68,6 +113,7 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
 
   const isTaken = (character.feats || []).some(f => f.id === feat.id);
   const prereqResult = feat.prereqs?.length ? checkAllPrereqs(feat.prereqs, character) : null;
+  const charState = feat.prereqs?.length ? buildCharacterState(character) : null;
   const { slots, takenRegular } = getFeatSlots(character);
   const hasSlots = takenRegular < slots;
   const requiresWeapon = needsWeaponSelect(feat.id);
@@ -103,14 +149,13 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
           {feat.prereqs.map((p, i) => {
             const r = prereqResult?.all[i];
             return (
-              <div key={i} className="flex items-start gap-2 text-xs font-crimson py-0.5">
-                <span className={`mt-0.5 shrink-0 ${r?.passed === true ? 'text-green-400' : r?.passed === false ? 'text-red-400' : 'text-yellow-400'}`}>
-                  {r?.passed === true ? '✓' : r?.passed === false ? '✗' : '⚠'}
-                </span>
-                <span className={r?.passed === true ? 'text-green-400/80' : r?.passed === false ? 'text-red-400/80' : 'text-yellow-400/80'}>
-                  {p.message}
-                </span>
-              </div>
+              <PrereqRow
+                key={i}
+                prereq={p}
+                passed={r?.passed === true}
+                unknown={r?.unknown === true}
+                charState={charState}
+              />
             );
           })}
         </div>

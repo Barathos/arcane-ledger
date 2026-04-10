@@ -392,8 +392,9 @@ export function getSkillPointsSpent(char) {
 // ─── PART 6: Prerequisite Checker ────────────────────────────────────────────
 
 export function buildCharacterState(char) {
+  const scores = getAbilityScores(char);  // final values including racial, level, misc
+  const mods   = getAbilityMods(char);
   const stats  = getDerivedStats(char);
-  const mods   = stats.mods;
   const skills = getSkillTotals(char);
   const skillMap = Object.fromEntries(skills.map(s => [s.id, s.ranks]));
 
@@ -436,8 +437,8 @@ export function buildCharacterState(char) {
   const hasEvasion    = classLevel('Rogue') >= 2 || classLevel('Monk') >= 2 || classLevel('Ranger') >= 9 || classLevel('Ninja') >= 2;
 
   return {
-    STR: stats.scores.str, DEX: stats.scores.dex, CON: stats.scores.con,
-    INT: stats.scores.int, WIS: stats.scores.wis, CHA: stats.scores.cha,
+    STR: scores.str, DEX: scores.dex, CON: scores.con,
+    INT: scores.int, WIS: scores.wis, CHA: scores.cha,
     BAB: stats.totalBAB,
     fortBase: stats.baseFort, refBase: stats.baseRef, willBase: stats.baseWill,
     fort: stats.fort, ref: stats.ref, will: stats.will,
