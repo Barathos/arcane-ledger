@@ -1,31 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Save, Download, Upload, Plus, Trash2, Sword, ScrollText, Dices } from 'lucide-react';
-import { getDefaultCharacter } from '../lib/dndData';
-import { loadAllCharacters, saveCharacter, deleteCharacter, loadActiveCharacterName, exportCharacterJSON, importCharacterJSON } from '../lib/characterStorage';
+import {
+  getDefaultCharacter, saveCharacterToStorage, loadAllCharactersFromStorage,
+  loadActiveCharacterFromStorage, deleteCharacterFromStorage, exportCharacter, importCharacter
+} from '../lib/characterEngine';
 import CharacterBuilder from '../components/dnd/CharacterBuilder';
 import CharacterSheet from '../components/dnd/CharacterSheet';
 import PlayMode from '../components/dnd/PlayMode';
 
 export default function DnDApp() {
-  const [character, setCharacter] = useState(getDefaultCharacter());
-  const [savedChars, setSavedChars] = useState({});
+  const [character, setCharacter] = useState(() => loadActiveCharacterFromStorage() || getDefaultCharacter());
+  const [savedChars, setSavedChars] = useState(() => loadAllCharactersFromStorage());
   const [activeTab, setActiveTab] = useState('builder');
   const [showLoadDialog, setShowLoadDialog] = useState(false);
   const [newCharName, setNewCharName] = useState('');
 
+  // Auto-save on every change
   useEffect(() => {
-    const chars = loadAllCharacters();
-    setSavedChars(chars);
-    const activeName = loadActiveCharacterName();
-    if (activeName && chars[activeName]) {
-      setCharacter({ ...getDefaultCharacter(), ...chars[activeName] });
-    }
-  }, []);
+    saveCharacterToStorage(character);
+    setSavedChars(loadAllCharactersFromStorage());
+  }, [character]);
 
   const updateCharacter = useCallback((updates) => {
     setCharacter(prev => {
@@ -35,13 +33,12 @@ export default function DnDApp() {
   }, []);
 
   const handleSave = () => {
-    const name = character.name || 'Unnamed Hero';
-    saveCharacter(name, character);
-    setSavedChars(loadAllCharacters());
+    saveCharacterToStorage(character);
+    setSavedChars(loadAllCharactersFromStorage());
   };
 
   const handleLoad = (name) => {
-    const chars = loadAllCharacters();
+    const chars = loadAllCharactersFromStorage();
     if (chars[name]) {
       setCharacter({ ...getDefaultCharacter(), ...chars[name] });
       setShowLoadDialog(false);
@@ -49,8 +46,8 @@ export default function DnDApp() {
   };
 
   const handleDelete = (name) => {
-    deleteCharacter(name);
-    setSavedChars(loadAllCharacters());
+    deleteCharacterFromStorage(name);
+    setSavedChars(loadAllCharactersFromStorage());
   };
 
   const handleNew = () => {
@@ -78,7 +75,7 @@ export default function DnDApp() {
             <div>
               <h1 className="font-cinzel text-xl font-bold text-primary tracking-wide">D&D 3.5 Forge</h1>
               <p className="text-xs text-muted-foreground font-crimson">
-                {character.name || 'New Character'} — {character.classes.map(c => `${c.name} ${c.level}`).join(' / ')}
+                {character.name || 'New Character'} — {character.classes.map(c => `${c.name} ${c.levels || c.level || 1}`).join(' / ')}
               </p>
             </div>
           </div>
@@ -113,7 +110,7 @@ export default function DnDApp() {
                 </div>
               </DialogContent>
             </Dialog>
-            <Button size="sm" variant="outline" onClick={() => exportCharacterJSON(character)} className="border-primary/30 text-primary hover:bg-primary/10">
+            <Button size="sm" variant="outline" onClick={() => exportCharacter(character)} className="border-primary/30 text-primary hover:bg-primary/10">
               <Download className="w-4 h-4 mr-1" /> Export
             </Button>
             <label className="cursor-pointer">
