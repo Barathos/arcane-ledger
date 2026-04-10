@@ -1,62 +1,31 @@
 // ============================================================
-// D&D 3.5 Feat Database v2 — lazy-loaded from GitHub, cached in memory.
+// D&D 3.5 Feat Database — lazy-loaded from GitHub, cached in memory.
 // ============================================================
 
 const FEAT_INDEX_URL = 'https://raw.githubusercontent.com/Barathos/arcane-ledger/main/dnd35_feat_index.json';
 const FEAT_DESC_URL  = 'https://raw.githubusercontent.com/Barathos/arcane-ledger/main/dnd35_feat_descriptions.json';
-const FETCH_OPTS = { method: 'GET', headers: { 'Accept': 'application/json' }, mode: 'cors' };
 
-let _featDatabase = null;
-let _loadPromise = null;
+let _featIndex = null;
 let _featDescriptions = null;
-let _descLoadPromise = null;
 
 export async function loadFeatDatabase() {
-  if (_featDatabase) return _featDatabase;
-  if (_loadPromise) return _loadPromise;
-
-  _loadPromise = (async () => {
-    try {
-      console.log('[FeatDB] Loading index from:', FEAT_INDEX_URL);
-      const r = await fetch(FEAT_INDEX_URL, FETCH_OPTS);
-      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
-      const data = await r.json();
-      console.log('[FeatDB] Index loaded:', data.length, 'feats');
-      _featDatabase = Array.isArray(data) ? data : [];
-      return _featDatabase;
-    } catch (err) {
-      console.error('[FeatDB] Index load error:', err);
-      _featDatabase = [];
-      _loadPromise = null;
-      return [];
-    }
-  })();
-
-  return _loadPromise;
+  if (_featIndex) return _featIndex;
+  console.log('[FeatDB] Fetching index from:', FEAT_INDEX_URL);
+  const response = await fetch(FEAT_INDEX_URL);
+  if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  _featIndex = await response.json();
+  console.log('[FeatDB] Index loaded:', _featIndex.length, 'feats');
+  return _featIndex;
 }
 
 export async function loadFeatDescriptions() {
   if (_featDescriptions) return _featDescriptions;
-  if (_descLoadPromise) return _descLoadPromise;
-
-  _descLoadPromise = (async () => {
-    try {
-      console.log('[FeatDB] Loading descriptions from:', FEAT_DESC_URL);
-      const r = await fetch(FEAT_DESC_URL, FETCH_OPTS);
-      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
-      const data = await r.json();
-      console.log('[FeatDB] Descriptions loaded:', Object.keys(data).length, 'entries');
-      _featDescriptions = (data && typeof data === 'object') ? data : {};
-      return _featDescriptions;
-    } catch (err) {
-      console.error('[FeatDB] Descriptions load error:', err);
-      _featDescriptions = {};
-      _descLoadPromise = null;
-      return {};
-    }
-  })();
-
-  return _descLoadPromise;
+  console.log('[FeatDB] Fetching descriptions from:', FEAT_DESC_URL);
+  const response = await fetch(FEAT_DESC_URL);
+  if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  _featDescriptions = await response.json();
+  console.log('[FeatDB] Descriptions loaded:', Object.keys(_featDescriptions).length, 'entries');
+  return _featDescriptions;
 }
 
 export function getFeatDescription(id) {
@@ -64,15 +33,15 @@ export function getFeatDescription(id) {
 }
 
 export function getFeatDatabase() {
-  return _featDatabase || [];
+  return _featIndex || [];
 }
 
 export function getFeatById(id) {
-  return (_featDatabase || []).find(f => f.id === id) || null;
+  return (_featIndex || []).find(f => f.id === id) || null;
 }
 
 export function getFeatsByCategory(category) {
-  return (_featDatabase || []).filter(f =>
+  return (_featIndex || []).filter(f =>
     f.categories?.some(c => c.toLowerCase() === category.toLowerCase())
   );
 }

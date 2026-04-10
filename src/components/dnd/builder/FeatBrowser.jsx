@@ -55,9 +55,15 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
   const [description, setDescription] = useState(() => getFeatDescription(feat.id));
 
   useEffect(() => {
-    if (!description) {
-      loadFeatDescriptions().then(() => setDescription(getFeatDescription(feat.id)));
+    async function loadDesc() {
+      try {
+        await loadFeatDescriptions();
+        setDescription(getFeatDescription(feat.id));
+      } catch (err) {
+        console.error('[FeatBrowser] Failed to load descriptions:', err);
+      }
     }
+    if (!description) loadDesc();
   }, [feat.id]);
 
   const isTaken = (character.feats || []).some(f => f.id === feat.id);
@@ -154,11 +160,19 @@ export default function FeatBrowser({ character, updateCharacter }) {
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
-    loadFeatDatabase().then(data => {
-      setFeats(data);
-      setLoadFailed(data.length === 0);
-      setLoading(false);
-    });
+    async function load() {
+      try {
+        const data = await loadFeatDatabase();
+        setFeats(data);
+        setLoadFailed(data.length === 0);
+      } catch (err) {
+        console.error('[FeatBrowser] Failed to load feats:', err);
+        setLoadFailed(true);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
   }, []);
 
   const { slots, fighterBonusSlots, takenRegular, takenFighter } = getFeatSlots(character);
