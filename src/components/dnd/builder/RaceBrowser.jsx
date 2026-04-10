@@ -137,32 +137,8 @@ export default function RaceBrowser({ character, updateCharacter, onClose }) {
   }, [search, sourceFilter, sizeFilter, laFilter, typeFilter]);
 
   const handleSelect = useCallback((race) => {
-    const keyMap = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
-    const legacyMods = {};
-    Object.entries(race.abilityMods || {}).forEach(([k, v]) => { legacyMods[keyMap[k] || k] = v; });
-
-    updateCharacter({
-      race: race.name,
-      size: race.size || 'Medium',
-      srdRaceData: {
-        name: race.name, source: race.source,
-        speed: race.speed || 30,
-        swimSpeed: race.swimSpeed || null,
-        flySpeed: race.flySpeed || null,
-        abilityMods: legacyMods,
-        LA: race.LA || 0,
-        racialHD: race.racialHD || 0,
-        racialHDType: race.racialHDType || null,
-        naturalArmor: race.naturalArmor || 0,
-        SR: race.SR || null,
-        darkvision: race.darkvision || 0,
-        lowLightVision: race.lowLightVision || false,
-        traits: race.description ? [race.description] : [],
-        favoredClass: race.favoredClass || 'Any',
-        languages: race.languages || '',
-        srdUrl: null,
-      }
-    });
+    // Set char.race as full race object (new engine format uses lowercase abilityMods)
+    updateCharacter({ race, size: race.size || 'Medium' });
     setSelected(null);
     onClose?.();
   }, [updateCharacter, onClose]);

@@ -1,67 +1,72 @@
 // ============================================================
-// D&D 3.5 Character Engine — Single source of truth
-// All calculations derive from the character state object.
-// Never store derived values — always compute them.
+// D&D 3.5 Character Engine — Complete layered calculation system
+// Single source of truth. Never store derived values.
 // ============================================================
 
-// ─── STEP 1: Default Character State ────────────────────────────────────────
+import { getFeatDatabase, getFeatById } from './featDatabase';
+
+// ─── PART 1: Default Character State ─────────────────────────────────────────
 
 export function getDefaultCharacter() {
   return {
-    // Identity
-    name: '', playerName: '', campaign: '',
+    name: '', playerName: '', campaign: '', deity: '',
     alignment: 'True Neutral',
-    deity: '', size: 'Medium', age: '', gender: '',
-    height: '', weight: '', eyes: '', hair: '', skin: '',
+    age: '', gender: '', height: '', weight: '', eyes: '', hair: '', skin: '',
+    notes: '', xp: 0,
 
     // Race — full race object from RACE_DATABASE once selected
     race: null,
 
-    // Classes — array supports multiclassing
-    // each: { id, name, source, levels, hd, bab, fort, ref, will,
-    //         skillsPerLevel, classSkills[], spellcasting, classType }
+    // Classes — array for multiclassing support
+    // Each: { helpId, name, levels, hd, bab, fort, ref, will, skillsPerLevel,
+    //         classSkills[], spellcasting, spellLevelsMax, classType }
     classes: [],
 
     // Base ability scores (before any modifiers)
     baseAbilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
 
-    // Level-up ability increases (+1 every 4 levels, user assigns)
+    // +1 increases from leveling (1 per 4 levels)
     abilityIncreases: [], // [{atLevel:4, stat:'str'}, ...]
 
-    // HP
-    hp: { rolls: [], tempHP: 0, nonlethalDamage: 0, currentDamage: 0 },
-    // rolls: [{level:1, value:10, classHD:10}, ...]
+    // HP — one roll per character level
+    hp: {
+      rolls: [], // [{level:1, classHD:8, value:8}, ...]
+      tempHP: 0,
+      nonlethalDamage: 0,
+      currentDamage: 0,
+    },
 
     // Skills
-    skillRanks: {},  // { kTumble: 5, kHide: 3, ... }
-    skillMisc: {},   // misc modifiers per skill
+    skillRanks: {},  // { kTumble:5, kHide:3, ... }
+    skillMisc: {},   // misc bonuses per skill
 
     // Feats
-    feats: [], // [{ id, name, source, takenAtLevel, categories[], weaponId? }]
+    feats: [], // [{id, name, takenAtLevel, weaponId}]
 
-    // Domains (clerics)
+    // Domains (Cleric only)
     domains: [],
 
     // Spells per class
-    spells: {}, // { classId: { known: [], prepared: [] } }
+    spells: {}, // { classHelpId: { prepared:[], known:[] } }
 
     // Equipment
     equipment: {
-      weapons: [], armor: [], shield: null, gear: [],
-      currency: { gp: 0, sp: 0, cp: 0 },
+      weapons: [],  // [{name,damage,critRange,damageType,range,attackBonus,weight,qty,notes}]
+      armor: null,  // {name,acBonus,maxDex,acp,spellFail,type,weight}
+      shield: null, // {name,acBonus,acp,spellFail,weight}
+      gear: [],     // [{name,weight,qty,value}]
+      currency: { pp: 0, gp: 0, sp: 0, cp: 0 },
     },
 
-    // Misc modifiers (magic items, conditions, etc.)
-    miscModifiers: {
-      ac: 0, initiative: 0, naturalArmor: 0, deflection: 0,
-      fort: 0, ref: 0, will: 0,
+    // Misc modifiers
+    miscMods: {
       str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0,
+      ac: 0, naturalArmor: 0, deflection: 0, initiative: 0,
+      fort: 0, ref: 0, will: 0,
+      meleeAttack: 0, rangedAttack: 0, speed: 0,
     },
 
-    notes: '',
-    xp: 0,
-
-    // Play mode
+    // Play mode state
     conditions: [],
     combatants: [],
     currentTurn: 0,
@@ -71,536 +76,577 @@ export function getDefaultCharacter() {
   };
 }
 
-// ─── STEP 2: Ability Score Engine ────────────────────────────────────────────
+// ─── PART 2: Ability Score Engine ────────────────────────────────────────────
 
-export function getTotalLevel(character) {
-  return character.classes.reduce((sum, c) => sum + (c.levels || 0), 0);
+export const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+
+export function getTotalLevel(char) {
+  return (char.classes || []).reduce((sum, c) => sum + (c.levels || 0), 0);
 }
 
-export function getAbilityScores(character) {
-  const base = character.baseAbilities;
-  const racial = character.race?.abilityMods || { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
-  const totalLevel = getTotalLevel(character);
+export function getAbilityScores(char) {
+  const base = char.baseAbilities;
+  const racial = char.race?.abilityMods || { str:0, dex:0, con:0, int:0, wis:0, cha:0 };
+  const totalLevel = getTotalLevel(char);
+  const misc = char.miscMods || {};
 
-  const increases = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
-  (character.abilityIncreases || []).forEach(inc => {
+  const increases = { str:0, dex:0, con:0, int:0, wis:0, cha:0 };
+  (char.abilityIncreases || []).forEach(inc => {
     if (inc.atLevel <= totalLevel && increases[inc.stat] !== undefined) {
       increases[inc.stat]++;
     }
   });
 
-  const misc = character.miscModifiers || {};
-  const final = {};
-  for (const stat of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
-    final[stat] = base[stat] + (racial[stat] || 0) + increases[stat] + (misc[stat] || 0);
+  const result = {};
+  for (const s of ABILITY_KEYS) {
+    result[s] = (base[s] || 10) + (racial[s] || 0) + increases[s] + (misc[s] || 0);
   }
-  return final;
+  return result;
 }
 
 export function getAbilityMod(score) {
   return Math.floor((score - 10) / 2);
 }
 
-export function getAbilityMods(character) {
-  const scores = getAbilityScores(character);
+export function getAbilityMods(char) {
+  const scores = getAbilityScores(char);
   const mods = {};
-  for (const [stat, score] of Object.entries(scores)) {
-    mods[stat] = getAbilityMod(score);
-  }
+  for (const s of ABILITY_KEYS) mods[s] = getAbilityMod(scores[s]);
   return mods;
 }
 
-export function getAvailableAbilityIncreases(character) {
-  const totalLevel = getTotalLevel(character);
-  // 1 increase at levels 4, 8, 12, 16, 20
-  const totalAvailable = Math.floor(totalLevel / 4);
-  const assigned = (character.abilityIncreases || []).filter(inc => inc.atLevel <= totalLevel).length;
-  return totalAvailable - assigned;
+export function getAvailableAbilityIncreases(char) {
+  const total = getTotalLevel(char);
+  const available = Math.floor(total / 4);
+  const used = (char.abilityIncreases || []).filter(i => i.atLevel <= total).length;
+  return available - used;
 }
 
-// ─── STEP 3: Class & Level Engine ────────────────────────────────────────────
+// ─── PART 3: Class & Level Engine ────────────────────────────────────────────
 
-const BAB_TABLE = {
+export const BAB_TABLE = {
   Good:   [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20],
   Medium: [0,1,2,3,3,4,5,6,6,7,8,9,9,10,11,12,12,13,14,15],
   Poor:   [0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10],
 };
 
-const SAVE_TABLE = {
+export const SAVE_TABLE = {
   Good: [2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12],
   Poor: [0,0,1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6],
 };
 
-export function getClassStats(character) {
-  let totalBAB = 0;
-  let totalFort = 0, totalRef = 0, totalWill = 0;
+export const SIZE_ATTACK_MOD = { Fine:4, Diminutive:2, Tiny:2, Small:1, Medium:0, Large:-1, Huge:-2, Gargantuan:-4, Colossal:-8 };
+export const SIZE_AC_MOD     = { Fine:8, Diminutive:4, Tiny:2, Small:1, Medium:0, Large:-1, Huge:-2, Gargantuan:-4, Colossal:-8 };
+export const SIZE_HIDE_MOD   = { Fine:16, Diminutive:12, Tiny:8, Small:4, Medium:0, Large:-4, Huge:-8, Gargantuan:-12, Colossal:-16 };
+export const SIZE_CMB_MOD    = { Fine:-8, Diminutive:-4, Tiny:-2, Small:-1, Medium:0, Large:1, Huge:2, Gargantuan:4, Colossal:8 };
+export const SIZE_VALUE      = { Fine:-4, Diminutive:-3, Tiny:-2, Small:-1, Medium:0, Large:1, Huge:2, Gargantuan:3, Colossal:4 };
+
+export function getClassStats(char) {
+  const mods = getAbilityMods(char);
+  const intMod = mods.int;
+  const isHuman = char.race?.name === 'Human' || char.race?.id === 'rHuman2';
+
+  let totalBAB = 0, totalFort = 0, totalRef = 0, totalWill = 0;
   let totalSkillPoints = 0;
-  const classSkills = new Set();
-  const allClassFeatures = [];
-  let totalLevel = 0;
+  const classSkillSet = new Set();
+  let isFirstClass = true;
 
-  const intMod = getAbilityMod(getAbilityScores(character).int);
-  // Human check
-  const isHuman = character.race?.id === 'rHuman2' || character.race?.name === 'Human';
+  (char.classes || []).forEach(cls => {
+    const lv = Math.max(0, Math.min(cls.levels || 0, 20));
+    if (lv < 1) return;
 
-  character.classes.forEach((cls, clsIndex) => {
-    const levels = cls.levels || 0;
-    if (levels < 1) return;
-    const isFirstClass = clsIndex === 0;
-    totalLevel += levels;
-
-    // BAB: sum per-level deltas (correct for multiclass)
+    // BAB: sum per-level deltas
     const babArr = BAB_TABLE[cls.bab] || BAB_TABLE['Poor'];
-    for (let l = 0; l < levels; l++) {
-      const curr = babArr[l] ?? 0;
-      const prev = l > 0 ? babArr[l - 1] ?? 0 : 0;
+    for (let i = 0; i < lv; i++) {
+      const curr = babArr[i] ?? 0;
+      const prev = i > 0 ? babArr[i-1] ?? 0 : 0;
       totalBAB += curr - prev;
     }
 
-    // Saves: use table value at class level (RAW multiclass stacking)
-    totalFort += SAVE_TABLE[cls.fort]?.[levels - 1] ?? 0;
-    totalRef  += SAVE_TABLE[cls.ref]?.[levels - 1] ?? 0;
-    totalWill += SAVE_TABLE[cls.will]?.[levels - 1] ?? 0;
+    // Saves: table value at class level (RAW multiclass stacking)
+    totalFort += SAVE_TABLE[cls.fort]?.[lv-1] ?? 0;
+    totalRef  += SAVE_TABLE[cls.ref ]?.[lv-1] ?? 0;
+    totalWill += SAVE_TABLE[cls.will]?.[lv-1] ?? 0;
 
     // Skill points
-    const spPerLevel = Math.max(1, (cls.skillsPerLevel || 2) + intMod);
-    const humanBonus = isHuman ? levels : 0;
-    // First class level gets ×4, subsequent get ×1
-    const firstLevelBonus = isFirstClass ? spPerLevel * 3 : 0; // +3 gives total ×4
-    totalSkillPoints += spPerLevel * levels + firstLevelBonus + humanBonus;
+    const spBase = Math.max(1, (cls.skillsPerLevel || 2) + intMod + (isHuman ? 1 : 0));
+    totalSkillPoints += spBase * lv;
+    if (isFirstClass) { totalSkillPoints += spBase * 3; isFirstClass = false; }
 
-    // Class skills union
-    (cls.classSkills || []).forEach(sk => classSkills.add(sk));
-
-    // Class features
-    (cls.features || []).forEach(f => {
-      if (f.level <= levels) allClassFeatures.push({ ...f, fromClass: cls.name });
-    });
+    (cls.classSkills || []).forEach(sk => classSkillSet.add(sk));
   });
 
-  // Iterative attacks (every 5 BAB above first)
-  const attacks = [];
-  if (totalBAB > 0) {
-    attacks.push(totalBAB);
-    let next = totalBAB - 5;
-    while (next > 0) { attacks.push(next); next -= 5; }
+  // Racial HD skill points
+  const rHD = char.race?.racialHD || 0;
+  if (rHD > 0) {
+    totalSkillPoints += Math.max(1, 2 + intMod) * (rHD + 3);
   }
 
+  // Iterative attacks
+  const attacks = [];
+  for (let atk = totalBAB; atk > 0; atk -= 5) attacks.push(atk);
+
   return {
-    totalLevel,
-    totalBAB,
-    attacks,
-    baseFort: totalFort,
-    baseRef: totalRef,
-    baseWill: totalWill,
+    totalLevel: getTotalLevel(char),
+    totalBAB, attacks,
+    baseFort: totalFort, baseRef: totalRef, baseWill: totalWill,
     totalSkillPoints,
-    classSkills: [...classSkills],
-    classFeatures: allClassFeatures,
+    classSkills: [...classSkillSet],
   };
 }
 
-// ─── Size modifiers ───────────────────────────────────────────────────────────
+// ─── PART 4: Derived Stats Engine ────────────────────────────────────────────
 
-const SIZE_AC_ATTACK_MODS = {
-  Fine: 8, Diminutive: 4, Tiny: 2, Small: 1,
-  Medium: 0, Large: -1, Huge: -2, Gargantuan: -4, Colossal: -8,
-};
-
-const SIZE_CMB_MODS = {
-  Fine: -8, Diminutive: -4, Tiny: -2, Small: -1,
-  Medium: 0, Large: 1, Huge: 2, Gargantuan: 4, Colossal: 8,
-};
-
-const SIZE_HIDE_BONUS = {
-  Fine: 16, Diminutive: 12, Tiny: 8, Small: 4,
-  Medium: 0, Large: -4, Huge: -8, Gargantuan: -12, Colossal: -16,
-};
-
-export function getSizeModifier(size) {
-  return SIZE_AC_ATTACK_MODS[size] ?? 0;
+export function calculateMaxHP(char) {
+  const mods = getAbilityMods(char);
+  const rolls = char.hp?.rolls || [];
+  if (rolls.length === 0) return Math.max(1, mods.con);
+  return Math.max(1, rolls.reduce((sum, r) => sum + r.value, 0) + mods.con * rolls.length);
 }
 
-export function getSizeCMBMod(size) {
-  return SIZE_CMB_MODS[size] ?? 0;
+export function getHPStatus(current, max, con) {
+  if (current <= -con) return 'Dead';
+  if (current < 0)     return 'Unconscious';
+  if (current === 0)   return 'Disabled';
+  if (current < max * 0.25) return 'Bloodied';
+  if (current < max * 0.5)  return 'Wounded';
+  return 'Healthy';
 }
 
-export function getHideSizeBonus(size) {
-  return SIZE_HIDE_BONUS[size] ?? 0;
+export function calculateTotalWeight(char) {
+  const wepWeight = (char.equipment?.weapons || []).reduce((s,w) => s+(w.weight||0)*(w.qty||1), 0);
+  const armorWeight = (char.equipment?.armor?.weight || 0) + (char.equipment?.shield?.weight || 0);
+  const gearWeight = (char.equipment?.gear || []).reduce((s,g) => s+(g.weight||0)*(g.qty||1), 0);
+  return wepWeight + armorWeight + gearWeight;
 }
 
-// ─── Equipment helpers ────────────────────────────────────────────────────────
-
-function getArmorBonus(character) {
-  const armor = character.equipment?.armor?.[0];
-  return armor?.acBonus || 0;
-}
-
-function getShieldBonus(character) {
-  const shield = character.equipment?.shield;
-  return shield?.acBonus || 0;
-}
-
-function getArmorSpeedPenalty(character) {
-  const armor = character.equipment?.armor?.[0];
-  if (!armor) return 0;
-  // Heavy armor: speed reduced to 20 (from 30) or 15 (from 20)
-  if (armor.type === 'heavy') return 10;
-  return 0;
-}
-
-// ─── HP Calculator ───────────────────────────────────────────────────────────
-
-export function calculateMaxHP(character) {
-  const mods = getAbilityMods(character);
-  const conMod = mods.con;
-  const rolls = character.hp?.rolls || [];
-  if (rolls.length === 0) return Math.max(1, conMod);
-
-  let total = 0;
-  rolls.forEach((roll, i) => {
-    const value = Math.max(1, (roll.value ?? roll.classHD ?? 1));
-    total += value + conMod;
-  });
-  return Math.max(1, total);
-}
-
-// ─── STEP 4: Derived Stats Engine ────────────────────────────────────────────
-
-export function getDerivedStats(character) {
-  const abilities = getAbilityScores(character);
-  const mods = getAbilityMods(character);
-  const cls = getClassStats(character);
-  const race = character.race;
-  const misc = character.miscModifiers || {};
-  const size = race?.size || character.size || 'Medium';
+export function getDerivedStats(char) {
+  const scores = getAbilityScores(char);
+  const mods   = getAbilityMods(char);
+  const cls    = getClassStats(char);
+  const race   = char.race;
+  const misc   = char.miscMods || {};
+  const size   = race?.size || char.size || 'Medium';
 
   // HP
-  const maxHP = calculateMaxHP(character);
-  const currentHP = maxHP - (character.hp?.currentDamage || 0) + (character.hp?.tempHP || 0);
+  const maxHP = calculateMaxHP(char);
+  const currentHP = maxHP - (char.hp?.currentDamage || 0);
 
-  // Initiative
-  const initiative = mods.dex + (misc.initiative || 0);
+  // Armor
+  const armorBonus  = char.equipment?.armor?.acBonus  || 0;
+  const shieldBonus = char.equipment?.shield?.acBonus || 0;
 
   // AC
-  const armorBonus = getArmorBonus(character);
-  const shieldBonus = getShieldBonus(character);
-  const sizeACMod = getSizeModifier(size);
-  const naturalArmor = (race?.naturalArmor || 0) + (misc.naturalArmor || 0);
-
-  const ac = 10 + armorBonus + shieldBonus + mods.dex + sizeACMod + naturalArmor + (misc.deflection || 0) + (misc.ac || 0);
-  const touchAC = 10 + mods.dex + sizeACMod + (misc.deflection || 0);
-  const flatFootedAC = 10 + armorBonus + shieldBonus + sizeACMod + naturalArmor + (misc.deflection || 0);
+  const ac = 10 + armorBonus + shieldBonus + mods.dex
+           + (SIZE_AC_MOD[size]||0)
+           + (race?.naturalArmor||0) + (misc.naturalArmor||0)
+           + (misc.deflection||0) + (misc.ac||0);
+  const touchAC    = 10 + mods.dex + (SIZE_AC_MOD[size]||0) + (misc.deflection||0);
+  const flatFootAC = 10 + armorBonus + shieldBonus + (SIZE_AC_MOD[size]||0)
+                   + (race?.naturalArmor||0) + (misc.naturalArmor||0) + (misc.deflection||0);
 
   // Saves
-  const fort = cls.baseFort + mods.con + (misc.fort || 0);
-  const ref  = cls.baseRef  + mods.dex + (misc.ref  || 0);
-  const will = cls.baseWill + mods.wis + (misc.will || 0);
+  const fort = cls.baseFort + mods.con + (misc.fort||0);
+  const ref  = cls.baseRef  + mods.dex + (misc.ref ||0);
+  const will = cls.baseWill + mods.wis + (misc.will||0);
 
   // Attacks
-  const sizeMod = getSizeModifier(size);
-  const meleeAttack  = cls.totalBAB + mods.str + sizeMod;
-  const rangedAttack = cls.totalBAB + mods.dex + sizeMod;
-  const cmb = cls.totalBAB + mods.str + getSizeCMBMod(size);
+  const sizeMod  = SIZE_ATTACK_MOD[size] || 0;
+  const meleeAtk = cls.totalBAB + mods.str + sizeMod + (misc.meleeAttack||0);
+  const rangedAtk= cls.totalBAB + mods.dex + sizeMod + (misc.rangedAttack||0);
+  const cmb      = cls.totalBAB + mods.str + (SIZE_CMB_MOD[size]||0);
 
   // Speed
-  const baseSpeed = race?.speed || 30;
-  const speed = Math.max(5, baseSpeed - getArmorSpeedPenalty(character));
+  const baseSpeed    = race?.speed || 30;
+  const heavyArmor   = char.equipment?.armor?.type === 'heavy';
+  const armorPenalty = (heavyArmor && baseSpeed >= 30) ? 10 : 0;
+  const speed        = baseSpeed - armorPenalty + (misc.speed||0);
 
-  // Skill rank caps
-  const maxClassSkillRanks = cls.totalLevel + 3;
-  const maxCrossClassRanks = Math.floor(maxClassSkillRanks / 2);
+  // Initiative
+  const initiative = mods.dex + (misc.initiative||0);
+
+  // Skill caps
+  const maxClassRanks = cls.totalLevel + 3;
+  const maxCrossRanks = Math.floor(maxClassRanks / 2);
+
+  // Weight/encumbrance
+  const totalWeight = calculateTotalWeight(char);
+  const carryMed  = scores.str * 20;
+  const carryHvy  = scores.str * 30;
+
+  const spentSkillPoints = getSkillPointsSpent(char);
 
   return {
-    // HP
-    maxHP, currentHP,
-    // Initiative
-    initiative,
-    // AC
-    ac, touchAC, flatFootedAC,
-    // Saves
+    scores, mods,
+    maxHP, currentHP, tempHP: char.hp?.tempHP || 0,
+    nonlethal: char.hp?.nonlethalDamage || 0,
+    hpStatus: getHPStatus(currentHP, maxHP, scores.con),
+    ac, touchAC, flatFootAC,
     fort, ref, will,
     baseFort: cls.baseFort, baseRef: cls.baseRef, baseWill: cls.baseWill,
-    // Attack
-    meleeAttack, rangedAttack, cmb,
-    attacks: cls.attacks,
-    // Movement
-    speed,
-    // Totals
-    totalLevel: cls.totalLevel,
+    meleeAtk, rangedAtk, cmb, attacks: cls.attacks,
     totalBAB: cls.totalBAB,
-    // Skills
-    maxClassSkillRanks, maxCrossClassRanks,
+    initiative, speed,
+    totalLevel: cls.totalLevel,
+    maxClassRanks, maxCrossRanks,
     classSkills: cls.classSkills,
-    classFeatures: cls.classFeatures,
-    // Raw scores for display
-    abilityScores: abilities,
-    abilityMods: mods,
+    totalSkillPoints: cls.totalSkillPoints,
+    spentSkillPoints,
+    remainingSkillPoints: cls.totalSkillPoints - spentSkillPoints,
+    totalWeight, carryMed, carryHvy,
+    sizeValue: SIZE_VALUE[size] || 0,
+    size,
   };
 }
 
-// ─── STEP 5: Skill Engine ────────────────────────────────────────────────────
+// ─── PART 5: Skill Engine ─────────────────────────────────────────────────────
 
 export const SKILL_LIST = [
-  { id: 'kAppraise',   name: 'Appraise',                ability: 'int', trained: false },
-  { id: 'kBalance',    name: 'Balance',                 ability: 'dex', trained: false },
-  { id: 'kBluff',      name: 'Bluff',                   ability: 'cha', trained: false },
-  { id: 'kClimb',      name: 'Climb',                   ability: 'str', trained: false },
-  { id: 'kConcent',    name: 'Concentration',           ability: 'con', trained: false },
-  { id: 'kCraft',      name: 'Craft',                   ability: 'int', trained: false },
-  { id: 'kDeciphScr',  name: 'Decipher Script',         ability: 'int', trained: true  },
-  { id: 'kDiplomacy',  name: 'Diplomacy',               ability: 'cha', trained: false },
-  { id: 'kDisDevice',  name: 'Disable Device',          ability: 'int', trained: true  },
-  { id: 'kDisguise',   name: 'Disguise',                ability: 'cha', trained: false },
-  { id: 'kEscArtist',  name: 'Escape Artist',           ability: 'dex', trained: false },
-  { id: 'kForgery',    name: 'Forgery',                 ability: 'int', trained: false },
-  { id: 'kGathInfo',   name: 'Gather Information',      ability: 'cha', trained: false },
-  { id: 'kHandAnimal', name: 'Handle Animal',           ability: 'cha', trained: true  },
-  { id: 'kHeal',       name: 'Heal',                    ability: 'wis', trained: false },
-  { id: 'kHide',       name: 'Hide',                    ability: 'dex', trained: false },
-  { id: 'kIntim',      name: 'Intimidate',              ability: 'cha', trained: false },
-  { id: 'kJump',       name: 'Jump',                    ability: 'str', trained: false },
-  { id: 'kKnowArcan',  name: 'Knowledge (Arcana)',      ability: 'int', trained: true  },
-  { id: 'kKnowDun',    name: 'Knowledge (Dungeoneering)', ability: 'int', trained: true },
-  { id: 'kKnowGeog',   name: 'Knowledge (Geography)',   ability: 'int', trained: true  },
-  { id: 'kKnowHist',   name: 'Knowledge (History)',     ability: 'int', trained: true  },
-  { id: 'kKnowLocal',  name: 'Knowledge (Local)',       ability: 'int', trained: true  },
-  { id: 'kKnowNat',    name: 'Knowledge (Nature)',      ability: 'int', trained: true  },
-  { id: 'kKnowNoble',  name: 'Knowledge (Nobility)',    ability: 'int', trained: true  },
-  { id: 'kKnowRel',    name: 'Knowledge (Religion)',    ability: 'int', trained: true  },
-  { id: 'kKnowPlane',  name: 'Knowledge (Planes)',      ability: 'int', trained: true  },
-  { id: 'kListen',     name: 'Listen',                  ability: 'wis', trained: false },
-  { id: 'kMoveSil',    name: 'Move Silently',           ability: 'dex', trained: false },
-  { id: 'kOpenLock',   name: 'Open Lock',               ability: 'dex', trained: true  },
-  { id: 'kPerfDance',  name: 'Perform (Dance)',         ability: 'cha', trained: false },
-  { id: 'kPerfOrat',   name: 'Perform (Oratory)',       ability: 'cha', trained: false },
-  { id: 'kPerfSing',   name: 'Perform (Sing)',          ability: 'cha', trained: false },
-  { id: 'kPerfStrng',  name: 'Perform (String)',        ability: 'cha', trained: false },
-  { id: 'kPerfWind',   name: 'Perform (Wind)',          ability: 'cha', trained: false },
-  { id: 'kProfession', name: 'Profession',              ability: 'wis', trained: true  },
-  { id: 'kRide',       name: 'Ride',                    ability: 'dex', trained: false },
-  { id: 'kSearch',     name: 'Search',                  ability: 'int', trained: false },
-  { id: 'kSenseMot',   name: 'Sense Motive',            ability: 'wis', trained: false },
-  { id: 'kSleight',    name: 'Sleight of Hand',         ability: 'dex', trained: true  },
-  { id: 'kSpellcr',    name: 'Spellcraft',              ability: 'int', trained: true  },
-  { id: 'kSpot',       name: 'Spot',                    ability: 'wis', trained: false },
-  { id: 'kSurvival',   name: 'Survival',                ability: 'wis', trained: false },
-  { id: 'kSwim',       name: 'Swim',                    ability: 'str', trained: false },
-  { id: 'kTumble',     name: 'Tumble',                  ability: 'dex', trained: true  },
-  { id: 'kUseMagDev',  name: 'Use Magic Device',        ability: 'cha', trained: true  },
-  { id: 'kUseRope',    name: 'Use Rope',                ability: 'dex', trained: false },
+  { id:'kAppraise',   name:'Appraise',                 ability:'int', trained:false },
+  { id:'kBalance',    name:'Balance',                   ability:'dex', trained:false },
+  { id:'kBluff',      name:'Bluff',                     ability:'cha', trained:false },
+  { id:'kClimb',      name:'Climb',                     ability:'str', trained:false },
+  { id:'kConcent',    name:'Concentration',             ability:'con', trained:false },
+  { id:'kDecScript',  name:'Decipher Script',           ability:'int', trained:true  },
+  { id:'kDiplomacy',  name:'Diplomacy',                 ability:'cha', trained:false },
+  { id:'kDisable',    name:'Disable Device',            ability:'int', trained:true  },
+  { id:'kDisguise',   name:'Disguise',                  ability:'cha', trained:false },
+  { id:'kEscape',     name:'Escape Artist',             ability:'dex', trained:false },
+  { id:'kForgery',    name:'Forgery',                   ability:'int', trained:false },
+  { id:'kGatherInf',  name:'Gather Information',        ability:'cha', trained:false },
+  { id:'kHandleAnm',  name:'Handle Animal',             ability:'cha', trained:true  },
+  { id:'kHeal',       name:'Heal',                      ability:'wis', trained:false },
+  { id:'kHide',       name:'Hide',                      ability:'dex', trained:false },
+  { id:'kIntim',      name:'Intimidate',                ability:'cha', trained:false },
+  { id:'kJump',       name:'Jump',                      ability:'str', trained:false },
+  { id:'kKnowArcEn',  name:'Knowledge (Arch/Eng)',      ability:'int', trained:true  },
+  { id:'kKnowArcan',  name:'Knowledge (Arcana)',         ability:'int', trained:true  },
+  { id:'kKnowDun',    name:'Knowledge (Dungeon)',        ability:'int', trained:true  },
+  { id:'kKnowGeog',   name:'Knowledge (Geography)',     ability:'int', trained:true  },
+  { id:'kKnowHist',   name:'Knowledge (History)',       ability:'int', trained:true  },
+  { id:'kKnowLocal',  name:'Knowledge (Local)',          ability:'int', trained:true  },
+  { id:'kKnowNat',    name:'Knowledge (Nature)',         ability:'int', trained:true  },
+  { id:'kKnowNoble',  name:'Knowledge (Nobility)',       ability:'int', trained:true  },
+  { id:'kKnowPlane',  name:'Knowledge (Planes)',         ability:'int', trained:true  },
+  { id:'kKnowPsi',    name:'Knowledge (Psionics)',       ability:'int', trained:true  },
+  { id:'kKnowRel',    name:'Knowledge (Religion)',       ability:'int', trained:true  },
+  { id:'kListen',     name:'Listen',                     ability:'wis', trained:false },
+  { id:'kMoveSil',    name:'Move Silently',              ability:'dex', trained:false },
+  { id:'kOpenLock',   name:'Open Lock',                  ability:'dex', trained:true  },
+  { id:'kPerfDance',  name:'Perform (Dance)',             ability:'cha', trained:false },
+  { id:'kPerfSing',   name:'Perform (Sing)',              ability:'cha', trained:false },
+  { id:'kPerfWind',   name:'Perform (Wind)',              ability:'cha', trained:false },
+  { id:'kPerfAct',    name:'Perform (Act)',               ability:'cha', trained:false },
+  { id:'kPerfOrat',   name:'Perform (Oratory)',           ability:'cha', trained:false },
+  { id:'kPerfStrng',  name:'Perform (String)',            ability:'cha', trained:false },
+  { id:'kProfSail',   name:'Profession (Sailor)',         ability:'wis', trained:true  },
+  { id:'kProfSiege',  name:'Profession (Siege Eng.)',     ability:'wis', trained:true  },
+  { id:'kPsicraft',   name:'Psicraft',                    ability:'int', trained:true  },
+  { id:'kRide',       name:'Ride',                       ability:'dex', trained:false },
+  { id:'kSearch',     name:'Search',                     ability:'int', trained:false },
+  { id:'kSenseMot',   name:'Sense Motive',               ability:'wis', trained:false },
+  { id:'kSleight',    name:'Sleight of Hand',            ability:'dex', trained:true  },
+  { id:'kSpellcr',    name:'Spellcraft',                 ability:'int', trained:true  },
+  { id:'kSpot',       name:'Spot',                       ability:'wis', trained:false },
+  { id:'kSurvival',   name:'Survival',                   ability:'wis', trained:false },
+  { id:'kSwim',       name:'Swim',                       ability:'str', trained:false },
+  { id:'kTumble',     name:'Tumble',                     ability:'dex', trained:true  },
+  { id:'kUseMagic',   name:'Use Magic Device',           ability:'cha', trained:true  },
+  { id:'kUseRope',    name:'Use Rope',                   ability:'dex', trained:false },
 ];
 
-export function getSkillTotals(character) {
-  const stats = getDerivedStats(character);
-  const mods = stats.abilityMods;
+export function getSkillTotals(char) {
+  const stats = getDerivedStats(char);
+  const mods  = stats.mods;
 
   return SKILL_LIST.map(skill => {
-    const isClassSkill = stats.classSkills.includes(skill.id);
-    const ranks = character.skillRanks[skill.id] || 0;
-    const maxRanks = isClassSkill ? stats.maxClassSkillRanks : stats.maxCrossClassRanks;
-    const abilityMod = mods[skill.ability] ?? 0;
-    const miscMod = character.skillMisc[skill.id] || 0;
-    const sizeMod = skill.id === 'kHide' ? getHideSizeBonus(character.race?.size || 'Medium') : 0;
-
+    const isClass  = stats.classSkills.includes(skill.id);
+    const ranks    = (char.skillRanks || {})[skill.id] || 0;
+    const maxRanks = isClass ? stats.maxClassRanks : stats.maxCrossRanks;
+    const hideMod  = skill.id === 'kHide' ? (SIZE_HIDE_MOD[stats.size]||0) : 0;
+    const misc     = (char.skillMisc || {})[skill.id] || 0;
     return {
-      ...skill,
-      isClassSkill,
-      ranks,
-      maxRanks,
-      abilityMod,
-      miscMod,
-      total: ranks + abilityMod + miscMod + sizeMod,
+      ...skill, isClass, ranks, maxRanks,
+      abilityMod: mods[skill.ability] || 0,
+      total: ranks + (mods[skill.ability]||0) + misc + hideMod,
+      miscMod: misc,
+      pointCost: isClass ? 1 : 2,
       overMax: ranks > maxRanks,
-      pointCost: isClassSkill ? 1 : 2,
+      cantUseUntrained: skill.trained && ranks === 0,
     };
   });
 }
 
-export function getSkillPointsSpent(character) {
-  return getSkillTotals(character).reduce((sum, sk) => sum + sk.ranks * sk.pointCost, 0);
+export function getSkillPointsSpent(char) {
+  // Build class skill set to determine cost
+  const classSkillSet = new Set();
+  (char.classes || []).forEach(cls => (cls.classSkills || []).forEach(sk => classSkillSet.add(sk)));
+
+  return SKILL_LIST.reduce((sum, skill) => {
+    const ranks = (char.skillRanks || {})[skill.id] || 0;
+    const isClass = classSkillSet.has(skill.id);
+    return sum + ranks * (isClass ? 1 : 2);
+  }, 0);
 }
 
-export function getSkillPointsAvailable(character) {
-  return getClassStats(character).totalSkillPoints;
-}
+// ─── PART 6: Prerequisite Checker ────────────────────────────────────────────
 
-// ─── STEP 6: Class Features Engine ───────────────────────────────────────────
+export function buildCharacterState(char) {
+  const stats  = getDerivedStats(char);
+  const mods   = stats.mods;
+  const skills = getSkillTotals(char);
+  const skillMap = Object.fromEntries(skills.map(s => [s.id, s.ranks]));
 
-export const CORE_CLASS_FEATURES = {
-  Barbarian: [
-    { level: 1,  id: 'cBbnRage',     name: 'Rage',                tag: 'Hero.Rage' },
-    { level: 1,  id: 'cBbnFast',     name: 'Fast Movement' },
-    { level: 2,  id: 'xUncanny',     name: 'Uncanny Dodge' },
-    { level: 3,  id: 'xTrapSense',   name: 'Trap Sense',          value: (l) => Math.floor(l / 3) },
-    { level: 5,  id: 'xUncanny2',    name: 'Improved Uncanny Dodge' },
-    { level: 7,  id: 'cBbnRage2',    name: 'Rage (2/day)' },
-    { level: 11, id: 'cBbnRage3',    name: 'Rage (3/day)' },
-    { level: 11, id: 'cBbnGrRage',   name: 'Greater Rage' },
-    { level: 14, id: 'cBbnIndomit',  name: 'Indomitable Will' },
-    { level: 15, id: 'cBbnRage4',    name: 'Rage (4/day)' },
-    { level: 17, id: 'cBbnTireless', name: 'Tireless Rage' },
-    { level: 19, id: 'cBbnRage5',    name: 'Rage (5/day)' },
-    { level: 20, id: 'cBbnMighRage', name: 'Mighty Rage' },
-  ],
-  Rogue: [
-    { level: 1,  id: 'xSneakAtt',  name: 'Sneak Attack',          value: (l) => Math.ceil(l / 2), tag: 'Sneak Attack' },
-    { level: 1,  id: 'cRogTrap',   name: 'Trapfinding' },
-    { level: 2,  id: 'cRogEvas',   name: 'Evasion' },
-    { level: 3,  id: 'xTrapSense', name: 'Trap Sense',            value: (l) => Math.floor(l / 3) },
-    { level: 4,  id: 'xUncanny',   name: 'Uncanny Dodge' },
-    { level: 8,  id: 'xUncanny2',  name: 'Improved Uncanny Dodge' },
-    { level: 10, id: 'cRogSpec',   name: 'Special Ability' },
-  ],
-  Druid: [
-    { level: 1,  id: 'cDrdWild1',   name: 'Wild Shape (Small)',       tag: 'Hero.WildShape' },
-    { level: 1,  id: 'cAnimClass',  name: 'Animal Companion',         tag: 'CompAvail.cAnimComp' },
-    { level: 1,  id: 'cDrdWoodS',   name: 'Woodland Stride' },
-    { level: 2,  id: 'cDrdWoodS2',  name: 'Woodland Stride (Improved)' },
-    { level: 3,  id: 'cDrdTrackS',  name: 'Trackless Step' },
-    { level: 4,  id: 'cDrdWild2',   name: 'Wild Shape (Medium)' },
-    { level: 5,  id: 'cDrdResNa',   name: "Resist Nature's Lure" },
-    { level: 6,  id: 'cDrdWild3',   name: 'Wild Shape (3/day)' },
-    { level: 8,  id: 'cDrdWild4',   name: 'Wild Shape (Large)' },
-    { level: 9,  id: 'cDrdWild5',   name: 'Venom Immunity' },
-    { level: 10, id: 'cDrdWildPl',  name: 'Wild Shape (Plant)' },
-    { level: 12, id: 'cDrdWild6',   name: 'Wild Shape (Huge)' },
-    { level: 16, id: 'cDrdWildE',   name: 'Wild Shape (Elemental)' },
-    { level: 18, id: 'cDrdWildL',   name: 'Wild Shape (Large Elemental)' },
-    { level: 20, id: 'cDrdTimls',   name: 'Timeless Body' },
-  ],
-  Paladin: [
-    { level: 1,  id: 'xSmiteEvil',  name: 'Smite Evil',             tag: 'User.SmiteEvil' },
-    { level: 1,  id: 'cPalDivGrc',  name: 'Divine Grace',           tag: 'User.DivineGrc' },
-    { level: 1,  id: 'cPalLayHnd',  name: 'Lay on Hands' },
-    { level: 1,  id: 'cPalAuraCr',  name: 'Aura of Courage' },
-    { level: 1,  id: 'cPalDivHlth', name: 'Divine Health' },
-    { level: 2,  id: 'cPalTurnUn',  name: 'Turn Undead',            tag: 'Hero.TurnUndead' },
-    { level: 3,  id: 'cPalAuraGd',  name: 'Aura of Good' },
-    { level: 3,  id: 'cPalDivMnt',  name: 'Divine Mount' },
-    { level: 4,  id: 'cPalSpell',   name: 'Spells (1st level)' },
-    { level: 5,  id: 'cPalMClass',  name: 'Special Mount',          tag: 'CompAvail.cPalMount' },
-    { level: 6,  id: 'cPalRemDis',  name: 'Remove Disease (1/week)' },
-    { level: 8,  id: 'xSmiteEvil2', name: 'Smite Evil (2/day)' },
-  ],
-  Ranger: [
-    { level: 1,  id: 'cRgrEnemy1',  name: 'Favored Enemy',          tag: 'Hero.FavEnemy' },
-    { level: 1,  id: 'cRgrTrack',   name: 'Track' },
-    { level: 1,  id: 'cRgrWild',    name: 'Wild Empathy' },
-    { level: 2,  id: 'cRgrCombSt',  name: 'Combat Style' },
-    { level: 3,  id: 'cRgrEndure',  name: 'Endurance' },
-    { level: 4,  id: 'cAnimClass',  name: 'Animal Companion',       tag: 'CompAvail.cAnimComp' },
-    { level: 4,  id: 'cRgrSpell',   name: 'Spells (1st level)' },
-    { level: 6,  id: 'cRgrEnemy2',  name: 'Favored Enemy (2nd)' },
-    { level: 7,  id: 'cRgrWoodS',   name: 'Woodland Stride' },
-    { level: 8,  id: 'cRgrSwift',   name: 'Swift Tracker' },
-    { level: 9,  id: 'cRgrEvas',    name: 'Evasion' },
-    { level: 11, id: 'cRgrEnemy3',  name: 'Favored Enemy (3rd)' },
-    { level: 13, id: 'cRgrCombMst', name: 'Combat Style Mastery' },
-    { level: 16, id: 'cRgrEnemy4',  name: 'Favored Enemy (4th)' },
-    { level: 17, id: 'cRgrHidPlnt', name: 'Hide in Plain Sight' },
-    { level: 21, id: 'cRgrEnemy5',  name: 'Favored Enemy (5th)' },
-  ],
-  Cleric: [
-    { level: 1, id: 'cClrUndead', name: 'Turn Undead',         tag: 'Hero.TurnUndead' },
-    { level: 1, id: 'cClrSpont',  name: 'Spontaneous Casting' },
-  ],
-  Monk: [
-    { level: 1,  id: 'cMnkFlurr',   name: 'Flurry of Blows' },
-    { level: 1,  id: 'cMnkUnarmed', name: 'Unarmed Strike',  value: (l) => [0,6,6,6,8,8,8,10,10,10,12,12,12,12,12,16,16,16,16,20,20][Math.min(l,20)] },
-    { level: 1,  id: 'cMnkAC',      name: 'AC Bonus' },
-    { level: 2,  id: 'cMnkEvas',    name: 'Evasion' },
-    { level: 3,  id: 'cMnkKiMag',   name: 'Ki Strike (Magic)' },
-    { level: 4,  id: 'cMnkSlFall',  name: 'Slow Fall' },
-    { level: 5,  id: 'cMnkPuStrik', name: 'Purity of Body' },
-    { level: 7,  id: 'cMnkWStride', name: 'Wholeness of Body' },
-    { level: 9,  id: 'cMnkImpEvas', name: 'Improved Evasion' },
-    { level: 11, id: 'cMnkKiLaw',   name: 'Ki Strike (Lawful)' },
-    { level: 13, id: 'cMnkTonguS',  name: 'Tongue of Sun and Moon' },
-    { level: 15, id: 'cMnkKiAdmt',  name: 'Ki Strike (Adamantine)' },
-    { level: 16, id: 'cMnkQdstep',  name: 'Quivering Palm' },
-    { level: 17, id: 'cMnkTimlBdy', name: 'Timeless Body' },
-    { level: 19, id: 'cMnkEmptBdy', name: 'Empty Body' },
-    { level: 20, id: 'cMnkPerfSl',  name: 'Perfect Self' },
-  ],
-  Wizard: [
-    { level: 1,  id: 'fScribeS',    name: 'Scribe Scroll (bonus)' },
-    { level: 1,  id: 'cArcFClass',  name: 'Familiar',  tag: 'CompAvail.cArcFamil' },
-    { level: 5,  id: 'cWizBonus5',  name: 'Bonus Feat' },
-    { level: 10, id: 'cWizBonus10', name: 'Bonus Feat' },
-    { level: 15, id: 'cWizBonus15', name: 'Bonus Feat' },
-    { level: 20, id: 'cWizBonus20', name: 'Bonus Feat' },
-  ],
-  Sorcerer: [
-    { level: 1, id: 'cArcFClass', name: 'Familiar', tag: 'CompAvail.cArcFamil' },
-  ],
-  Bard: [
-    { level: 1,  id: 'hBrdMusic',   name: 'Bardic Music',       tag: 'Hero.BardMusic' },
-    { level: 1,  id: 'cBrdKnow2',   name: 'Bardic Knowledge',   tag: 'User.Lore' },
-    { level: 1,  id: 'cBrdMInsC',   name: 'Inspire Courage' },
-    { level: 3,  id: 'cBrdMInsComp',name: 'Inspire Competence' },
-    { level: 6,  id: 'cBrdMSugg',   name: 'Suggestion' },
-    { level: 9,  id: 'cBrdMInsGr',  name: 'Inspire Greatness' },
-    { level: 12, id: 'cBrdMSongFr', name: 'Song of Freedom' },
-    { level: 15, id: 'cBrdMInsHr',  name: 'Inspire Heroics' },
-    { level: 18, id: 'cBrdMMassSug',name: 'Mass Suggestion' },
-  ],
-  Fighter: [],
-};
+  const classLevels = Object.fromEntries((char.classes || []).map(c => [c.name, c.levels || 0]));
+  const hasClass = (name) => (classLevels[name] || 0) > 0;
+  const classLevel = (name) => classLevels[name] || 0;
 
-export function getActiveClassFeatures(character) {
-  const features = [];
-  character.classes.forEach(cls => {
-    const featureTable = CORE_CLASS_FEATURES[cls.name] || [];
-    featureTable.forEach(feature => {
-      if (feature.level <= (cls.levels || 0)) {
-        const value = feature.value ? feature.value(cls.levels) : null;
-        features.push({
-          ...feature,
-          value,
-          fromClass: cls.name,
-          classLevel: cls.levels,
-        });
-      }
-    });
+  const arcaneClasses = (char.classes || []).filter(c =>
+    c.spellcasting === 'prepared_arcane' || c.spellcasting === 'spontaneous');
+  const divineClasses = (char.classes || []).filter(c =>
+    c.spellcasting === 'prepared_divine');
+  const isArcane = arcaneClasses.length > 0;
+  const isDivine = divineClasses.length > 0;
+  const isSpontaneous = (char.classes || []).some(c => c.spellcasting === 'spontaneous');
+  const maxArcaneLevel = arcaneClasses.reduce((max, c) => Math.max(max, c.spellLevelsMax||0), 0);
+  const maxDivineLevel = divineClasses.reduce((max, c) => Math.max(max, c.spellLevelsMax||0), 0);
+
+  const featIds = new Set((char.feats || []).map(f => f.id).filter(Boolean));
+  const weaponFocuses = new Set(
+    (char.feats || []).filter(f => f.id?.startsWith('fWepFoc') && f.weaponId).map(f => f.weaponId)
+  );
+
+  const featCategories = new Set();
+  (char.feats || []).forEach(f => {
+    const dbFeat = getFeatById(f.id);
+    (dbFeat?.categories || []).forEach(c => featCategories.add(c));
   });
-  return features;
-}
 
-// ─── STEP 7: Full Character State Builder ────────────────────────────────────
-
-export function buildCharacterState(character) {
-  const abilityScores = getAbilityScores(character);
-  const abilityMods = getAbilityMods(character);
-  const classStats = getClassStats(character);
-  const derived = getDerivedStats(character);
-  const skillTotals = getSkillTotals(character);
-  const activeFeatures = getActiveClassFeatures(character);
+  const hasTurnUndead = hasClass('Cleric') || classLevel('Paladin') >= 2;
+  const hasWildShape  = classLevel('Druid') >= 5;
+  const hasRage       = hasClass('Barbarian');
+  const sneakAttack   = Math.ceil((classLevel('Rogue') + classLevel('Assassin') + classLevel('Lurk')) / 2);
+  const hasSmiteEvil  = classLevel('Paladin') >= 1;
+  const hasSmite      = hasSmiteEvil || classLevel('Blackguard') >= 1;
+  const hasFamiliar   = isArcane;
+  const hasAnimalComp = hasClass('Druid') || classLevel('Ranger') >= 4;
+  const hasSpecMount  = classLevel('Paladin') >= 5;
+  const hasBardMusic  = hasClass('Bard');
+  const hasFavEnemy   = hasClass('Ranger');
+  const hasEvasion    = classLevel('Rogue') >= 2 || classLevel('Monk') >= 2 || classLevel('Ranger') >= 9 || classLevel('Ninja') >= 2;
 
   return {
-    character,
-    abilityScores,
-    abilityMods,
-    classStats,
+    STR: stats.scores.str, DEX: stats.scores.dex, CON: stats.scores.con,
+    INT: stats.scores.int, WIS: stats.scores.wis, CHA: stats.scores.cha,
+    BAB: stats.totalBAB,
+    fortBase: stats.baseFort, refBase: stats.baseRef, willBase: stats.baseWill,
+    fort: stats.fort, ref: stats.ref, will: stats.will,
+    totalLevel: stats.totalLevel,
+    totalHD: stats.totalLevel + (char.race?.racialHD || 0),
+    sizeValue: stats.sizeValue, size: stats.size,
+    classLevels, classLevel, hasClass,
+    skillRanks: skillMap,
+    featIds, weaponFocuses, featCategories,
+    isArcane, isDivine, isSpontaneous,
+    maxArcaneLevel, maxDivineLevel,
+    hasTurnUndead, hasWildShape, hasRage, sneakAttack,
+    hasSmite, hasSmiteEvil, hasFamiliar, hasAnimalComp,
+    hasSpecMount, hasBardMusic, hasFavEnemy, hasEvasion,
+    alignment: char.alignment,
+    isEvil:    char.alignment?.includes('Evil'),
+    isGood:    char.alignment?.includes('Good'),
+    isLawful:  char.alignment?.startsWith('Lawful'),
+    isChaotic: char.alignment?.startsWith('Chaotic'),
+    domains:   new Set(char.domains || []),
+    raceId:    char.race?.id || '',
+    raceName:  char.race?.name || '',
+  };
+}
+
+export function checkPrerequisite(expr, cs) {
+  if (!expr || !expr.trim()) return null;
+  const e = expr.trim();
+
+  const abilMap = { aSTR:'STR', aDEX:'DEX', aCON:'CON', aINT:'INT', aWIS:'WIS', aCHA:'CHA' };
+
+  // Ability score: child[aSTR].field[aFinalVal].value >= N
+  for (const [key, stat] of Object.entries(abilMap)) {
+    const m = e.match(new RegExp(`child\\[${key}\\]\\.field\\[aFinalVal\\]\\.value\\s*>=\\s*(\\d+)`));
+    if (m) return cs[stat] >= +m[1];
+  }
+  // Skill ranks: #skillranks[kX] >= N or childfound[kX].field[kUserRanks].value >= N
+  const skM = e.match(/#skillranks\[(\w+)\]\s*>=\s*(\d+)/);
+  if (skM) return (cs.skillRanks[skM[1]]||0) >= +skM[2];
+  const skM2 = e.match(/childfound\[(\w+)\]\.field\[kUserRanks\]\.value\s*>=\s*(\d+)/);
+  if (skM2) return (cs.skillRanks[skM2[1]]||0) >= +skM2[2];
+  // Has feat: #hasfeat[fX] <> 0
+  const fM = e.match(/#hasfeat\[(\w+)\]\s*<>\s*0/);
+  if (fM) return cs.featIds.has(fM[1]);
+  // BAB
+  const babM = e.match(/tAtkBase\]\.value\s*>=\s*(\d+)/);
+  if (babM) return cs.BAB >= +babM[1];
+  // Class level count
+  const clsM = e.match(/#levelcount\[(\w+)\]\s*>=\s*(\d+)/) ||
+               e.match(/tagcount\[Classes\.(\w+)\]\s*>=\s*(\d+)/);
+  if (clsM) return cs.classLevel(clsM[1]) >= +clsM[2];
+  // Character level
+  const lvM = e.match(/herofield\[tLevel\]\.value\s*>=\s*(\d+)/) ||
+              e.match(/#totallevelcount\[\]\s*>=\s*(\d+)/);
+  if (lvM) return cs.totalLevel >= +lvM[1];
+  // Hit dice
+  const hdM = e.match(/tHitDice\]\.value\s*>=\s*(\d+)/);
+  if (hdM) return cs.totalHD >= +hdM[1];
+  // Save base
+  const svBM = e.match(/child\[v(Fort|Ref|Will)\]\.field\[vBase\]\.value\s*>=\s*(\d+)/);
+  if (svBM) return cs[svBM[1].toLowerCase()+'Base'] >= +svBM[2];
+  // Save total
+  const svTM = e.match(/child\[v(Fort|Ref|Will)\]\.field\[vTotal\]\.value\s*>=\s*(\d+)/);
+  if (svTM) return cs[svTM[1].toLowerCase()] >= +svTM[2];
+  // Race tag
+  const rcM = e.match(/tagis\[Race\.(\w+)\]/);
+  if (rcM) {
+    const tag = rcM[1].toLowerCase();
+    return cs.raceId.toLowerCase().includes(tag) || cs.raceName.toLowerCase().includes(tag);
+  }
+  // Size
+  const szM = e.match(/herofield\[tSize\]\.value\s*(>=|<=|>|<)\s*(-?\d+)/);
+  if (szM) {
+    const sv = cs.sizeValue, n = +szM[2], op = szM[1];
+    if (op === '>=') return sv >= n;
+    if (op === '<=') return sv <= n;
+    if (op === '>')  return sv > n;
+    if (op === '<')  return sv < n;
+  }
+  // Alignment
+  if (e.includes('Alignment.Evil'))    return cs.isEvil;
+  if (e.includes('Alignment.Good'))    return cs.isGood;
+  if (e.includes('Alignment.Lawful'))  return cs.isLawful;
+  if (e.includes('Alignment.Chaotic')) return cs.isChaotic;
+  if (e.includes('LawEvil'))           return cs.isLawful && cs.isEvil;
+  if (e.includes('ChaotEvil'))         return cs.isChaotic && cs.isEvil;
+  if (e.includes('LawGood'))           return cs.isLawful && cs.isGood;
+  // Caster level via tagcount
+  if (e.includes('tagcount[Hero.Arcane]')) {
+    const m = e.match(/tagcount\[Hero\.Arcane\]\s*>=\s*(\d+)\s*\+\s*1/);
+    return m ? cs.maxArcaneLevel >= +m[1] : cs.isArcane;
+  }
+  if (e.includes('tagcount[Hero.Divine]')) {
+    const m = e.match(/tagcount\[Hero\.Divine\]\s*>=\s*(\d+)\s*\+\s*1/);
+    return m ? cs.maxDivineLevel >= +m[1] : cs.isDivine;
+  }
+  // herofield[tMaxCaster]
+  const casterM = e.match(/herofield\[tMaxCaster\]\.value\s*>=\s*(\d+)/);
+  if (casterM) return Math.max(cs.maxArcaneLevel, cs.maxDivineLevel) >= +casterM[1];
+  // Special class features
+  if (e.includes('Hero.TurnUndead'))    return cs.hasTurnUndead;
+  if (e.includes('Hero.WildShape') || e.includes('WildShape')) return cs.hasWildShape;
+  if (e.includes('cBbnRage') || e.includes('cAveRage')) return cs.hasRage;
+  if (e.includes('User.SmiteEvil'))    return cs.hasSmiteEvil;
+  if (e.includes('User.Smite'))        return cs.hasSmite;
+  if (e.includes('Hero.FavEnemy') || e.includes('cRgrEnemy1')) return cs.hasFavEnemy;
+  if (e.includes('hBrdMusic') || e.includes('Hero.BardMusic')) return cs.hasBardMusic;
+  if (e.includes('CompAvail.cArcFamil') || e.includes('cArcFClass')) return cs.hasFamiliar;
+  if (e.includes('CompAvail.cAnimComp') || e.includes('cAnimClass')) return cs.hasAnimalComp;
+  if (e.includes('CompAvail.cPalMount') || e.includes('cPalMClass')) return cs.hasSpecMount;
+  if (e.includes('Hero.SpontArc')) return cs.isSpontaneous;
+  if (e.includes('Hero.Caster')) return cs.isArcane || cs.isDivine;
+  // Sneak attack value
+  const saM = e.match(/xSneakAtt\]\.field\[Value\]\.value\s*(>=|<>)\s*(\d+)/);
+  if (saM) return saM[1] === '<>' ? cs.sneakAttack > 0 : cs.sneakAttack >= +saM[2];
+  // Weapon Focus
+  const wfM = e.match(/tagis\[WepFocus\.(\?|\w+)\]/);
+  if (wfM) return wfM[1] === '?' ? cs.weaponFocuses.size > 0 : cs.weaponFocuses.has(wfM[1]);
+  // Feat category count
+  const catM = e.match(/tagcount\[fCategory\.(\w+)\]\s*(?:<>|>=)\s*(\d+)?/);
+  if (catM) {
+    const count = catM[2] ? +catM[2] : 1;
+    let total = 0;
+    for (const cat of cs.featCategories) {
+      if (cat.toLowerCase() === catM[1].toLowerCase()) total++;
+    }
+    return total >= count;
+  }
+  // Domain
+  const domM = e.match(/tagis\[Domain\.(\w+)\]/);
+  if (domM) return cs.domains.has(domM[1]);
+  // Class feature childfound
+  const cfM = e.match(/childfound\[(\w+)\]\.tagis\[Helper\.ShowSpec\]/);
+  if (cfM) {
+    const featureMap = {
+      cBbnRage:'hasRage', cAveRage:'hasRage', cDrdWild1:'hasWildShape',
+      cClrUndead:'hasTurnUndead', cPalTurnUn:'hasTurnUndead',
+      cRgrEnemy1:'hasFavEnemy', hBrdMusic:'hasBardMusic', cBrdMInsC:'hasBardMusic',
+      cArcFClass:'hasFamiliar', cAnimClass:'hasAnimalComp',
+      cPalMClass:'hasSpecMount', cMnkEvas:'hasEvasion', cRogEvas:'hasEvasion',
+    };
+    const flag = featureMap[cfM[1]];
+    if (flag) {
+      if (flag === 'sneakAttack') return cs.sneakAttack > 0;
+      return Boolean(cs[flag]);
+    }
+    return null;
+  }
+  // Manifester level
+  const manM = e.match(/tagcount\[Hero\.Manifester\]\s*>=\s*(\d+)/);
+  if (manM) return (cs.classLevel('Psion') + cs.classLevel('Wilder') + cs.classLevel('Ardent')) >= +manM[1];
+  // #hasfeat multiple sum: #hasfeat[A] + #hasfeat[B] <> 0
+  const sumFeatM = e.match(/((?:#hasfeat\[\w+\]\s*\+\s*)*#hasfeat\[\w+\])\s*<>\s*0/);
+  if (sumFeatM) {
+    const allIds = [...e.matchAll(/#hasfeat\[(\w+)\]/g)].map(m => m[1]);
+    return allIds.some(id => cs.featIds.has(id));
+  }
+
+  return null; // unrecognized — warn but don't block
+}
+
+export function checkAllPrereqs(prereqs, char) {
+  if (!prereqs || prereqs.length === 0) return { meetsAll: true, failed: [], unknown: [], all: [] };
+  const cs = buildCharacterState(char);
+  const results = prereqs.map(p => {
+    const passed = checkPrerequisite(p.expr, cs);
+    return { message: p.message, passed, unknown: passed === null };
+  });
+  return {
+    meetsAll: results.every(r => r.passed !== false),
+    failed:   results.filter(r => r.passed === false).map(r => r.message),
+    unknown:  results.filter(r => r.unknown).map(r => r.message),
+    all:      results,
+  };
+}
+
+// ─── PART 7: Full Character State Builder ────────────────────────────────────
+
+export function buildFullCharacterState(char) {
+  const derived = getDerivedStats(char);
+  const skillTotals = getSkillTotals(char);
+
+  return {
+    character: char,
     derived,
     skillTotals,
-    activeFeatures,
-    availableAbilityIncreases: getAvailableAbilityIncreases(character),
-    skillPointsSpent: getSkillPointsSpent(character),
-    skillPointsAvailable: getSkillPointsAvailable(character),
+    availableAbilityIncreases: getAvailableAbilityIncreases(char),
+    spentSkillPoints: derived.spentSkillPoints,
+    remainingSkillPoints: derived.remainingSkillPoints,
   };
+}
+
+// ─── Helper formatters ────────────────────────────────────────────────────────
+
+export function formatModifier(n) { return (n >= 0 ? '+' : '') + n; }
+
+export function getHumanReadableAttacks(attacks) {
+  return (attacks || []).map(a => formatModifier(a)).join('/');
 }
 
 // ─── localStorage persistence ─────────────────────────────────────────────────
 
-const STORAGE_KEY = 'dnd35_character_v2';
-const CHAR_LIST_KEY = 'dnd35_character_list_v2';
+const CHAR_LIST_KEY = 'dnd35_characters_v3';
 
 export function saveCharacterToStorage(character) {
   try {
-    const name = character.name || 'Unnamed';
-    localStorage.setItem(STORAGE_KEY + '_active', name);
     const all = loadAllCharactersFromStorage();
-    all[name] = character;
+    const key = character.name || 'Unnamed';
+    all[key] = character;
     localStorage.setItem(CHAR_LIST_KEY, JSON.stringify(all));
   } catch {}
 }
@@ -614,10 +660,11 @@ export function loadAllCharactersFromStorage() {
 
 export function loadActiveCharacterFromStorage() {
   try {
-    const name = localStorage.getItem(STORAGE_KEY + '_active');
-    if (!name) return null;
     const all = loadAllCharactersFromStorage();
-    return all[name] || null;
+    const keys = Object.keys(all);
+    if (keys.length === 0) return null;
+    // Return last saved
+    return all[keys[keys.length - 1]];
   } catch { return null; }
 }
 
@@ -643,10 +690,8 @@ export async function importCharacter(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      try {
-        const imported = JSON.parse(e.target.result);
-        resolve({ ...getDefaultCharacter(), ...imported });
-      } catch { reject(new Error('Invalid JSON')); }
+      try { resolve({ ...getDefaultCharacter(), ...JSON.parse(e.target.result) }); }
+      catch { reject(new Error('Invalid JSON')); }
     };
     reader.readAsText(file);
   });
