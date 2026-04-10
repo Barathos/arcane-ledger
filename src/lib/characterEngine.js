@@ -85,21 +85,35 @@ export function getTotalLevel(char) {
 }
 
 export function getAbilityScores(char) {
-  const base = char.baseAbilities;
-  const racial = char.race?.abilityMods || { str:0, dex:0, con:0, int:0, wis:0, cha:0 };
+  const base = char.baseAbilities || {};
+  const racial = char.race?.abilityMods || {};
   const totalLevel = getTotalLevel(char);
   const misc = char.miscMods || {};
 
+  const readBase   = (s) => base[s] ?? base[s.toUpperCase()] ?? 10;
+  const readRacial = (s) => racial[s] ?? racial[s.toUpperCase()] ?? 0;
+
   const increases = { str:0, dex:0, con:0, int:0, wis:0, cha:0 };
+
+  // Format A (characterEngine): abilityIncreases = [{atLevel:4, stat:'str'}, ...]
   (char.abilityIncreases || []).forEach(inc => {
-    if (inc.atLevel <= totalLevel && increases[inc.stat] !== undefined) {
-      increases[inc.stat]++;
+    if (inc.atLevel <= totalLevel) {
+      const key = inc.stat?.toLowerCase();
+      if (key && increases[key] !== undefined) increases[key]++;
+    }
+  });
+
+  // Format B (dndData): levelUpAbilities = {4: 'INT', 8: 'STR'}
+  Object.entries(char.levelUpAbilities || {}).forEach(([lvl, stat]) => {
+    if (parseInt(lvl) <= totalLevel && stat) {
+      const key = stat.toLowerCase();
+      if (increases[key] !== undefined) increases[key]++;
     }
   });
 
   const result = {};
   for (const s of ABILITY_KEYS) {
-    result[s] = (base[s] || 10) + (racial[s] || 0) + increases[s] + (misc[s] || 0);
+    result[s] = readBase(s) + readRacial(s) + increases[s] + (misc[s] ?? misc[s.toUpperCase()] ?? 0);
   }
   return result;
 }
@@ -459,8 +473,8 @@ export function buildCharacterState(char) {
     isLawful:  char.alignment?.startsWith('Lawful'),
     isChaotic: char.alignment?.startsWith('Chaotic'),
     domains:   new Set(char.domains || []),
-    raceId:    char.race?.id || '',
-    raceName:  char.race?.name || '',
+    raceId:   typeof char.race === 'string' ? char.race : (char.race?.id || ''),
+    raceName: typeof char.race === 'string' ? char.race : (char.race?.name || ''),
   };
 }
 
