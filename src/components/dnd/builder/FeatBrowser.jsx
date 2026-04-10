@@ -97,6 +97,8 @@ function AvailabilityDot({ result, noPrereqs }) {
 
 function FeatDetail({ feat, character, onTake, onRemove }) {
   const [weaponChoice, setWeaponChoice] = useState('');
+  const [override, setOverride] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   const [description, setDescription] = useState(() => getFeatDescription(feat.id));
 
   useEffect(() => {
@@ -116,6 +118,7 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
   const charState = feat.prereqs?.length ? buildCharacterState(character) : null;
   const { slots, takenRegular } = getFeatSlots(character);
   const hasSlots = takenRegular < slots;
+  const canTake = hasSlots && (override || !prereqResult || prereqResult.meetsAll) && (!requiresWeapon || weaponChoice);
   const requiresWeapon = needsWeaponSelect(feat.id);
   const equippedWeapons = (character.equipment?.weapons || []).map(w => w.name).filter(Boolean);
   const weaponOptions = [...new Set([...equippedWeapons, ...COMMON_WEAPONS])];
@@ -173,6 +176,29 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
         </div>
       )}
 
+      {/* Override */}
+      {!isTaken && (
+        <div className="pt-2 border-t border-border space-y-2">
+          <label className="flex items-center gap-2 text-xs font-crimson cursor-pointer">
+            <input
+              type="checkbox"
+              checked={override}
+              onChange={e => setOverride(e.target.checked)}
+              className="rounded"
+            />
+            <span className={override ? 'text-yellow-400' : 'text-muted-foreground'}>Override prerequisites</span>
+          </label>
+          {override && (
+            <textarea
+              value={overrideReason}
+              onChange={e => setOverrideReason(e.target.value)}
+              placeholder="Reason for override (DM approval, house rule, etc.)…"
+              className="w-full text-xs font-crimson bg-secondary/50 border border-yellow-700/50 rounded p-2 text-foreground placeholder:text-muted-foreground resize-none h-16"
+            />
+          )}
+        </div>
+      )}
+
       <div className="pt-2 border-t border-border flex gap-2">
         {isTaken ? (
           <Button onClick={() => onRemove(feat)} variant="outline" className="flex-1 font-cinzel border-red-900/50 text-red-400 hover:bg-red-900/20">
@@ -180,12 +206,12 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
           </Button>
         ) : (
           <Button
-            onClick={() => onTake(feat, weaponChoice)}
-            disabled={!hasSlots || (requiresWeapon && !weaponChoice)}
-            className="flex-1 font-cinzel"
+            onClick={() => onTake(feat, weaponChoice, override, overrideReason)}
+            disabled={!hasSlots || (requiresWeapon && !weaponChoice) || (!override && prereqResult && !prereqResult.meetsAll)}
+            className={`flex-1 font-cinzel ${override ? 'border border-yellow-700/60 bg-yellow-900/20 text-yellow-300 hover:bg-yellow-900/40' : ''}`}
             title={!hasSlots ? 'No feat slots remaining' : requiresWeapon && !weaponChoice ? 'Select a weapon first' : ''}
           >
-            Take Feat
+            {override ? '⚠ Override Take Feat' : 'Take Feat'}
           </Button>
         )}
       </div>
@@ -261,7 +287,7 @@ export default function FeatBrowser({ character, updateCharacter }) {
     return list;
   }, [feats, category, fighterOnly, search, availability, character]);
 
-  const handleTake = (feat, weaponId) => {
+  const handleTake = (feat, weaponId, override, overrideReason) => {
     updateCharacter(prev => ({
       ...prev,
       feats: [...(prev.feats || []), {
@@ -269,6 +295,8 @@ export default function FeatBrowser({ character, updateCharacter }) {
         name: feat.name,
         weaponId: weaponId || null,
         isFighterBonus: false,
+        override: override || false,
+        overrideReason: override ? (overrideReason || '') : undefined,
       }]
     }));
     setSelected(null);

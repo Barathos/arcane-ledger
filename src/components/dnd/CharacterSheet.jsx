@@ -195,13 +195,16 @@ export default function CharacterSheet({ character }) {
       <SectionCard title="Feats">
         <div className="flex flex-wrap gap-2">
           {(char.feats || []).map((feat, i) => (
-            <div key={i} className="bg-primary/10 border border-primary/20 rounded px-3 py-1">
+            <div key={i} className={`border rounded px-3 py-1 ${feat.override ? 'bg-yellow-900/15 border-yellow-700/40' : 'bg-primary/10 border-primary/20'}`}>
               <span className="font-cinzel text-xs text-primary font-semibold">
                 <Tooltip content={<FeatTooltipContent feat={feat} />} wide={true}>
                   <span>{feat.name}</span>
                 </Tooltip>
               </span>
               {feat.weaponId && <span className="text-xs text-muted-foreground ml-1">({feat.weaponId})</span>}
+              {feat.override && (
+                <span className="ml-1 text-xs text-yellow-400" title={feat.overrideReason || 'Override — no reason given'}>⚠ Override{feat.overrideReason ? `: ${feat.overrideReason}` : ''}</span>
+              )}
             </div>
           ))}
           {(char.feats || []).length === 0 && <p className="text-xs text-muted-foreground">None</p>}
