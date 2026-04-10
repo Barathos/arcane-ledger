@@ -271,7 +271,13 @@ export default function EquipmentStep({ character, updateCharacter }) {
     
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(i => i.name.toLowerCase().includes(q));
+      const before = list.length;
+      list = list.filter(i => (
+        (i.name && i.name.toLowerCase().includes(q)) ||
+        (i.source && i.source.toLowerCase().includes(q)) ||
+        (i.description && i.description.toLowerCase().includes(q))
+      ));
+      if (list.length === 0 && before > 0) console.log('[Equip] Search "' + q + '": 0 of ' + before + ' results. Check fields:', before > 0 ? 'name/source/description missing?' : 'post-filter pool was empty');
     }
     return list;
   }, [items, category, sourceFilter, search, slotFilter]);
