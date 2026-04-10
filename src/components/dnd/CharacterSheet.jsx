@@ -56,12 +56,19 @@ export default function CharacterSheet({ character }) {
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
           {ABILITY_KEYS.map(ab => (
             <div key={ab} className="text-center bg-secondary/30 rounded-lg p-2 border border-border">
-              <div className="font-cinzel text-xs font-bold text-primary">{ABILITY_LABELS[ab]}</div>
-              <div className="text-2xl font-cinzel font-bold text-foreground">
-                <StatTooltip char={char} stat={ab}>{scores[ab]}</StatTooltip>
-              </div>
-              <div className={`text-sm font-semibold ${mods[ab] >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                <StatTooltip char={char} stat={ab + 'Mod'}>{fmt(mods[ab])}</StatTooltip>
+              <div className="font-cinzel text-xs font-bold text-primary mb-1">{ABILITY_LABELS[ab]}</div>
+              <Tooltip content={<StatBreakdown {...getStatBreakdown(char, ab)} />}>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', cursor: 'help',
+                              borderBottom: '1px dotted rgba(255,200,50,0.3)', display: 'inline-block' }}>
+                  {scores[ab]}
+                </div>
+              </Tooltip>
+              <div className={`text-sm font-semibold mt-0.5 ${mods[ab] >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <Tooltip content={<StatBreakdown {...getStatBreakdown(char, ab + 'Mod')} />}>
+                  <div style={{ cursor: 'help', borderBottom: '1px dotted rgba(255,200,50,0.3)', display: 'inline-block' }}>
+                    {fmt(mods[ab])}
+                  </div>
+                </Tooltip>
               </div>
             </div>
           ))}

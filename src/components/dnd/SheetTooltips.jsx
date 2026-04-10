@@ -59,32 +59,51 @@ export function Tooltip({ children, content, wide = false }) {
 
 export function StatBreakdown({ rows, total, label, isScore }) {
   return (
-    <div>
-      <div style={{ fontWeight: 'bold', color: '#f0c040', marginBottom: '4px', fontSize: '13px' }}>
+    <div style={{ minWidth: '180px' }}>
+      <div style={{
+        fontWeight: 'bold', color: '#f0c040',
+        marginBottom: '6px', fontSize: '13px',
+        textAlign: 'center', borderBottom: '1px solid #8b6914',
+        paddingBottom: '4px'
+      }}>
         {label}
       </div>
-      {(rows || []).map((row, i) => (
-        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px' }}>
-          <span style={{ color: '#c8b070' }}>{row.label}</span>
-          <span style={{
-            color: row.value > 0 ? '#90ee90' : row.value < 0 ? '#ff8080' : '#e8d5a0',
-            fontWeight: 'bold',
-          }}>
-            {isScore ? row.value : (row.value >= 0 ? '+' : '')}{row.value}
-          </span>
-        </div>
-      ))}
-      {rows?.length > 0 && (
-        <div style={{
-          borderTop: '1px solid #8b6914', marginTop: '4px', paddingTop: '4px',
-          display: 'flex', justifyContent: 'space-between', fontWeight: 'bold',
-        }}>
-          <span>Total</span>
-          <span style={{ color: '#f0c040' }}>
-            {isScore ? total : (total >= 0 ? '+' : '')}{total}
-          </span>
-        </div>
-      )}
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <tbody>
+          {(rows || []).map((row, i) => (
+            <tr key={i}>
+              <td style={{
+                color: '#c8b070', fontSize: '12px',
+                padding: '1px 8px 1px 0', textAlign: 'left'
+              }}>
+                {row.label}
+              </td>
+              <td style={{
+                color: row.value > 0 ? '#90ee90' : row.value < 0 ? '#ff8080' : '#e8d5a0',
+                fontSize: '12px', fontWeight: 'bold',
+                padding: '1px 0', textAlign: 'right',
+                whiteSpace: 'nowrap'
+              }}>
+                {isScore ? row.value : (row.value >= 0 ? '+' : '') + row.value}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr style={{ borderTop: '1px solid #8b6914' }}>
+            <td style={{
+              color: '#f0c040', fontWeight: 'bold',
+              fontSize: '12px', padding: '3px 8px 1px 0'
+            }}>Total</td>
+            <td style={{
+              color: '#f0c040', fontWeight: 'bold',
+              fontSize: '12px', textAlign: 'right'
+            }}>
+              {isScore ? total : (total >= 0 ? '+' : '') + total}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }
@@ -148,11 +167,14 @@ export function getStatBreakdown(char, statName) {
     }
 
     case 'strMod': case 'dexMod': case 'conMod': case 'intMod': case 'wisMod': case 'chaMod': {
-      const s = statName.replace('Mod', '');
+      const statKey = statName.replace('Mod', '');
+      const score = scores[statKey];
+      const mod = mods[statKey];
       return {
-        rows: [{ label: `${s.toUpperCase()} score (${scores[s]})`, value: mods[s] }],
-        total: mods[s],
-        label: s.toUpperCase() + ' Modifier',
+        rows: [{ label: `${statKey.toUpperCase()} score (${score})`, value: mod }],
+        total: mod,
+        label: statKey.toUpperCase() + ' Modifier',
+        isScore: false,
       };
     }
 
