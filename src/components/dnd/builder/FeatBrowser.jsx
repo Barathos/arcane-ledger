@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { loadFeatDatabase, getFeatDatabase, FEAT_CATEGORIES } from '../../../lib/featDatabase';
+import { loadFeatDatabase, getFeatDatabase, FEAT_CATEGORIES, loadFeatDescriptions, getFeatDescription } from '../../../lib/featDatabase';
 import { checkAllPrereqs, getTotalLevel } from '../../../lib/characterEngine';
 import { X } from 'lucide-react';
 
@@ -52,12 +52,19 @@ function AvailabilityDot({ result, noPrereqs }) {
 
 function FeatDetail({ feat, character, onTake, onRemove }) {
   const [weaponChoice, setWeaponChoice] = useState('');
+  const [description, setDescription] = useState(() => getFeatDescription(feat.id));
+
+  useEffect(() => {
+    if (!description) {
+      loadFeatDescriptions().then(() => setDescription(getFeatDescription(feat.id)));
+    }
+  }, [feat.id]);
+
   const isTaken = (character.feats || []).some(f => f.id === feat.id);
   const prereqResult = feat.prereqs?.length ? checkAllPrereqs(feat.prereqs, character) : null;
   const { slots, takenRegular } = getFeatSlots(character);
   const hasSlots = takenRegular < slots;
   const requiresWeapon = needsWeaponSelect(feat.id);
-
   const equippedWeapons = (character.equipment?.weapons || []).map(w => w.name).filter(Boolean);
   const weaponOptions = [...new Set([...equippedWeapons, ...COMMON_WEAPONS])];
 
@@ -76,10 +83,12 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
         </div>
       </div>
 
-      {feat.description && (
+      {description ? (
         <div className="text-sm font-crimson text-foreground/90 leading-relaxed">
-          {renderMarkdown(feat.description)}
+          {renderMarkdown(description)}
         </div>
+      ) : (
+        <p className="text-xs text-muted-foreground font-crimson italic">Loading description…</p>
       )}
 
       {feat.prereqs?.length > 0 && (

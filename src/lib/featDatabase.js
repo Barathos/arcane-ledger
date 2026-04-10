@@ -3,24 +3,19 @@
 // Lazy-loaded from CDN, cached in memory.
 // ============================================================
 
-const FEAT_DB_URL = 'https://media.base44.com/files/public/69d85a474a5d9fc60d361ab8/d6682f4c8_dnd35_feat_db_v2.json';
+const FEAT_INDEX_URL = 'https://raw.githubusercontent.com/Barathos/arcane-ledger/main/dnd35_feat_index.json';
+const FEAT_DESC_URL  = 'https://raw.githubusercontent.com/Barathos/arcane-ledger/main/dnd35_feat_descriptions.json';
 
 let _featDatabase = null;
 let _loadPromise = null;
-
-// System/internal feats that shouldn't appear in player browser
-function isSystemFeat(feat) {
-  return /^Bonus \d/.test(feat.name) ||
-         /^Spell Immunity \d/.test(feat.name) ||
-         feat.name.startsWith('Breed Spell') ||
-         feat.name.startsWith('Breed Domain');
-}
+let _featDescriptions = null;
+let _descLoadPromise = null;
 
 export async function loadFeatDatabase() {
   if (_featDatabase) return _featDatabase;
   if (_loadPromise) return _loadPromise;
 
-  _loadPromise = fetch(FEAT_DB_URL)
+  _loadPromise = fetch(FEAT_INDEX_URL)
     .then(r => r.json())
     .then(data => {
       _featDatabase = data.filter(f => !isSystemFeat(f));
@@ -28,6 +23,24 @@ export async function loadFeatDatabase() {
     });
 
   return _loadPromise;
+}
+
+export async function loadFeatDescriptions() {
+  if (_featDescriptions) return _featDescriptions;
+  if (_descLoadPromise) return _descLoadPromise;
+
+  _descLoadPromise = fetch(FEAT_DESC_URL)
+    .then(r => r.json())
+    .then(data => {
+      _featDescriptions = data;
+      return _featDescriptions;
+    });
+
+  return _descLoadPromise;
+}
+
+export function getFeatDescription(id) {
+  return _featDescriptions?.[id] || null;
 }
 
 export function getFeatDatabase() {

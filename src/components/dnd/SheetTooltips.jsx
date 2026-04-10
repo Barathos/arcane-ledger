@@ -3,7 +3,7 @@ import {
   getDerivedStats, getAbilityScores, getAbilityMods, getClassStats,
   SIZE_ATTACK_MOD, SIZE_AC_MOD, SIZE_CMB_MOD,
 } from '../../lib/characterEngine';
-import { getFeatDatabase } from '../../lib/featDatabase';
+import { getFeatDatabase, loadFeatDescriptions, getFeatDescription } from '../../lib/featDatabase';
 
 // ─── Core Tooltip ────────────────────────────────────────────────────────────
 
@@ -111,12 +111,28 @@ export function StatBreakdown({ rows, total, label, isScore }) {
 // ─── Feat Description Tooltip Content ────────────────────────────────────────
 
 export function FeatTooltipContent({ feat }) {
+  const [desc, setDesc] = useState(null);
   const db = getFeatDatabase();
   const dbFeat = db.find(f => f.id === feat.id);
-  if (!dbFeat?.description) {
-    return <span style={{ color: '#888' }}>No description available</span>;
+
+  // Lazy-load descriptions on first render
+  useState(() => {
+    loadFeatDescriptions().then(() => {
+      setDesc(getFeatDescription(feat.id));
+    });
+  });
+
+  const description = desc ?? getFeatDescription(feat.id);
+
+  if (!description) {
+    return (
+      <div style={{ maxWidth: '300px' }}>
+        <div style={{ fontWeight: 'bold', color: '#f0c040', marginBottom: '6px', fontSize: '13px' }}>{dbFeat?.name || feat.name}</div>
+        <span style={{ color: '#888' }}>No description available</span>
+      </div>
+    );
   }
-  const rendered = dbFeat.description
+  const rendered = description
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/_(.+?)_/g, '<em>$1</em>')
     .replace(/\n\n/g, '</p><p>')
@@ -124,14 +140,14 @@ export function FeatTooltipContent({ feat }) {
   return (
     <div style={{ maxWidth: '300px' }}>
       <div style={{ fontWeight: 'bold', color: '#f0c040', marginBottom: '6px', fontSize: '13px' }}>
-        {dbFeat.name}
+        {dbFeat?.name || feat.name}
       </div>
-      <div style={{ fontSize: '11px', color: '#888', marginBottom: '6px' }}>{dbFeat.source}</div>
+      <div style={{ fontSize: '11px', color: '#888', marginBottom: '6px' }}>{dbFeat?.source}</div>
       <div
         style={{ fontSize: '12px', lineHeight: '1.6' }}
         dangerouslySetInnerHTML={{ __html: `<p>${rendered}</p>` }}
       />
-      {dbFeat.prereqs?.length > 0 && (
+      {dbFeat?.prereqs?.length > 0 && (
         <div style={{
           marginTop: '8px', borderTop: '1px solid #8b6914', paddingTop: '6px',
           fontSize: '11px', color: '#a08040',
