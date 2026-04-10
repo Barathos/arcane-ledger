@@ -71,18 +71,16 @@ function renderMarkdown(text) {
 
 function getFeatSlots(character) {
   const totalLevel = getTotalLevel(character);
-  // Regular feats: L1, 3, 5, 7, 9, 11, 13, 15, 17, 19 = ceil(totalLevel/2)
   let slots = Math.ceil(totalLevel / 2);
-  // Human bonus feat at L1
   const isHuman = character.race?.name === 'Human' || character.race?.id === 'rHuman2' || character.race?.name?.includes('Human');
   if (isHuman && totalLevel >= 1) slots += 1;
 
-  // Fighter bonus feats: L1, L2, L4, L6... = 1 + floor(fighterLevels/2)
   const fighterLevels = (character.classes || []).find(c => c.name === 'Fighter')?.levels || 0;
   const fighterBonusSlots = fighterLevels > 0 ? 1 + Math.floor(fighterLevels / 2) : 0;
 
-  const takenRegular = (character.feats || []).filter(f => !f.isFighterBonus).length;
-  const takenFighter = (character.feats || []).filter(f => f.isFighterBonus).length;
+  // noCount feats (override + don't count) are excluded from slot consumption
+  const takenRegular = (character.feats || []).filter(f => !f.isFighterBonus && !f.noCount).length;
+  const takenFighter = (character.feats || []).filter(f => f.isFighterBonus && !f.noCount).length;
 
   return { slots, fighterBonusSlots, takenRegular, takenFighter, totalLevel };
 }
@@ -99,6 +97,7 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
   const [weaponChoice, setWeaponChoice] = useState('');
   const [override, setOverride] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
+  const [noCount, setNoCount] = useState(false);
   const [description, setDescription] = useState(() => getFeatDescription(feat.id));
 
   useEffect(() => {
@@ -118,7 +117,6 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
   const charState = feat.prereqs?.length ? buildCharacterState(character) : null;
   const { slots, takenRegular } = getFeatSlots(character);
   const hasSlots = takenRegular < slots;
-  const canTake = hasSlots && (override || !prereqResult || prereqResult.meetsAll) && (!requiresWeapon || weaponChoice);
   const requiresWeapon = needsWeaponSelect(feat.id);
   const equippedWeapons = (character.equipment?.weapons || []).map(w => w.name).filter(Boolean);
   const weaponOptions = [...new Set([...equippedWeapons, ...COMMON_WEAPONS])];
@@ -176,25 +174,36 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
         </div>
       )}
 
-      {/* Override */}
+      {/* Override section */}
       {!isTaken && (
         <div className="pt-2 border-t border-border space-y-2">
           <label className="flex items-center gap-2 text-xs font-crimson cursor-pointer">
             <input
               type="checkbox"
               checked={override}
-              onChange={e => setOverride(e.target.checked)}
+              onChange={e => { setOverride(e.target.checked); if (!e.target.checked) setNoCount(false); }}
               className="rounded"
             />
-            <span className={override ? 'text-yellow-400' : 'text-muted-foreground'}>Override prerequisites</span>
+            <span className={override ? 'text-yellow-400' : 'text-muted-foreground'}>Override prerequisites &amp; slot limit</span>
           </label>
           {override && (
-            <textarea
-              value={overrideReason}
-              onChange={e => setOverrideReason(e.target.value)}
-              placeholder="Reason for override (DM approval, house rule, etc.)…"
-              className="w-full text-xs font-crimson bg-secondary/50 border border-yellow-700/50 rounded p-2 text-foreground placeholder:text-muted-foreground resize-none h-16"
-            />
+            <>
+              <textarea
+                value={overrideReason}
+                onChange={e => setOverrideReason(e.target.value)}
+                placeholder="Reason for override (DM approval, house rule, etc.)…"
+                className="w-full text-xs font-crimson bg-secondary/50 border border-yellow-700/50 rounded p-2 text-foreground placeholder:text-muted-foreground resize-none h-16"
+              />
+              <label className="flex items-center gap-2 text-xs font-crimson cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={noCount}
+                  onChange={e => setNoCount(e.target.checked)}
+                  className="rounded"
+                />
+                <span className={noCount ? 'text-blue-400' : 'text-muted-foreground'}>Don't count against feat slots</span>
+              </label>
+            </>
           )}
         </div>
       )}
@@ -206,10 +215,10 @@ function FeatDetail({ feat, character, onTake, onRemove }) {
           </Button>
         ) : (
           <Button
-            onClick={() => onTake(feat, weaponChoice, override, overrideReason)}
-            disabled={!hasSlots || (requiresWeapon && !weaponChoice) || (!override && prereqResult && !prereqResult.meetsAll)}
+            onClick={() => onTake(feat, weaponChoice, override, overrideReason, noCount)}
+            disabled={(requiresWeapon && !weaponChoice) || (!override && (!hasSlots || (prereqResult && !prereqResult.meetsAll)))}
             className={`flex-1 font-cinzel ${override ? 'border border-yellow-700/60 bg-yellow-900/20 text-yellow-300 hover:bg-yellow-900/40' : ''}`}
-            title={!hasSlots ? 'No feat slots remaining' : requiresWeapon && !weaponChoice ? 'Select a weapon first' : ''}
+            title={!hasSlots && !override ? 'No feat slots remaining' : requiresWeapon && !weaponChoice ? 'Select a weapon first' : ''}
           >
             {override ? '⚠ Override Take Feat' : 'Take Feat'}
           </Button>
@@ -227,7 +236,6 @@ export default function FeatBrowser({ character, updateCharacter }) {
   const [availability, setAvailability] = useState('Show All');
   const [fighterOnly, setFighterOnly] = useState(false);
   const [selected, setSelected] = useState(null);
-
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
@@ -236,8 +244,6 @@ export default function FeatBrowser({ character, updateCharacter }) {
         const data = await loadFeatDatabase();
         setFeats(data);
         setLoadFailed(data.length === 0);
-        const ce = data.find(f => f.name === 'Combat Expertise');
-        console.log('[FeatDB] Combat Expertise in DB:', ce);
       } catch (err) {
         console.error('[FeatBrowser] Failed to load feats:', err);
         setLoadFailed(true);
@@ -277,17 +283,16 @@ export default function FeatBrowser({ character, updateCharacter }) {
     if (availability !== 'Show All') {
       list = list.filter(feat => {
         if (!feat.prereqs?.length) {
-          return availability === 'Available Only'; // no prereqs = always available
+          return availability === 'Available Only';
         }
         const r = checkAllPrereqs(feat.prereqs, character);
-        const isAvailable = r.meetsAll;
-        return availability === 'Available Only' ? isAvailable : !isAvailable;
+        return availability === 'Available Only' ? r.meetsAll : !r.meetsAll;
       });
     }
     return list;
   }, [feats, category, fighterOnly, search, availability, character]);
 
-  const handleTake = (feat, weaponId, override, overrideReason) => {
+  const handleTake = (feat, weaponId, override, overrideReason, noCount) => {
     updateCharacter(prev => ({
       ...prev,
       feats: [...(prev.feats || []), {
@@ -297,6 +302,7 @@ export default function FeatBrowser({ character, updateCharacter }) {
         isFighterBonus: false,
         override: override || false,
         overrideReason: override ? (overrideReason || '') : undefined,
+        noCount: override && noCount ? true : undefined,
       }]
     }));
     setSelected(null);
