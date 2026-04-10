@@ -24,6 +24,9 @@ const BODY_SLOTS = [
   { id: 'Feet',      label: 'Feet',      max: 1, icon: '👢', hint: 'Boots, sandals, shoes, slippers' },
 ];
 
+// Categories that equip to body slots rather than the gear list
+const SLOTTED_CATEGORIES = ['Wondrous Item', 'Ring', 'Staff', 'Rod'];
+
 function renderMarkdown(text) {
   if (!text) return null;
   return text.split('\n\n').map((para, i) => {
@@ -41,7 +44,7 @@ function formatCost(gp) {
   return `${gp} gp`;
 }
 
-function ItemDetail({ item, onEquip, onEquipToSlot, targetSlot, onClose }) {
+function ItemDetail({ item, onEquip, onEquipToSlot, browsingForSlot, onClose }) {
   const [desc, setDesc] = useState(() => getItemDescription(item.id));
   const [qty, setQty] = useState(1);
 
@@ -50,6 +53,17 @@ function ItemDetail({ item, onEquip, onEquipToSlot, targetSlot, onClose }) {
       loadEquipmentDescriptions().then(() => setDesc(getItemDescription(item.id)));
     }
   }, [item.id]);
+
+  // Determine if we can equip to a slot
+  // Ring items always equip to Ring slot
+  // Wondrous items equip to their slot if browsing for that slot
+  const canEquipToSlot = browsingForSlot && (
+    item.category === 'Ring' ||
+    item.slot === browsingForSlot ||
+    (browsingForSlot === 'Ring' && item.category === 'Ring')
+  );
+
+  const slotLabel = browsingForSlot || item.slot || '';
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-3">
@@ -68,7 +82,6 @@ function ItemDetail({ item, onEquip, onEquipToSlot, targetSlot, onClose }) {
         <div><span className="text-muted-foreground">Cost: </span><span className="text-primary font-semibold">{formatCost(item.cost)}</span></div>
         {item.weight > 0 && <div><span className="text-muted-foreground">Weight: </span>{item.weight} lb</div>}
 
-        {/* Weapon stats */}
         {item.category === 'Weapon' && <>
           <div><span className="text-muted-foreground">Damage: </span><span className="font-semibold">{item.damage}</span></div>
           <div><span className="text-muted-foreground">Crit: </span>{item.critRange}</div>
@@ -78,7 +91,6 @@ function ItemDetail({ item, onEquip, onEquipToSlot, targetSlot, onClose }) {
           {item.range > 0 && <div><span className="text-muted-foreground">Range: </span>{item.range} ft</div>}
         </>}
 
-        {/* Armor stats */}
         {item.category === 'Armor' && <>
           <div><span className="text-muted-foreground">AC Bonus: </span><span className="text-green-400 font-bold">+{item.acBonus}</span></div>
           {item.maxDex < 99 && <div><span className="text-muted-foreground">Max Dex: </span>+{item.maxDex}</div>}
@@ -87,12 +99,13 @@ function ItemDetail({ item, onEquip, onEquipToSlot, targetSlot, onClose }) {
           <div className={ARMOR_TYPE_COLORS[item.armorType] || ''}>{item.armorType}</div>
         </>}
 
-        {/* Magic item stats */}
-        {item.slot && <div className="col-span-2"><span className="text-muted-foreground">Slot: </span><span className="text-primary font-semibold">{item.slot || 'Slotless'}</span></div>}
+        {item.slot && <div className="col-span-2"><span className="text-muted-foreground">Slot: </span><span className="text-primary font-semibold">{item.slot}</span></div>}
+        {!item.slot && SLOTTED_CATEGORIES.includes(item.category) && (
+          <div className="col-span-2 text-muted-foreground/60">Slotless</div>
+        )}
         {item.charges > 0 && <div><span className="text-muted-foreground">Charges: </span>{item.charges}</div>}
       </div>
 
-      {/* Description */}
       {desc && (
         <div className="border-t border-border pt-3">
           {renderMarkdown(desc)}
@@ -100,28 +113,31 @@ function ItemDetail({ item, onEquip, onEquipToSlot, targetSlot, onClose }) {
       )}
       {!desc && <p className="text-xs text-muted-foreground font-crimson italic">Loading description…</p>}
 
-      {/* Add to equipment */}
-      <div className="pt-2 border-t border-border">
-        <div className="flex gap-2 items-center flex-col">
-          {(item.category === 'Gear' || item.category === 'Potion/Oil') && (
-            <div className="flex items-center gap-1 w-full">
-              <span className="text-xs text-muted-foreground font-crimson">Qty:</span>
-              <Input type="number" min={1} max={99} value={qty}
-                onChange={e => setQty(Math.max(1,parseInt(e.target.value)||1))}
-                className="h-7 w-16 text-xs bg-secondary/50 text-center flex-1" />
-            </div>
-          )}
-          {targetSlot && item.slot === targetSlot && (
-            <Button onClick={() => onEquipToSlot(item, targetSlot)} className="flex-1 w-full font-cinzel text-xs h-8 bg-primary">
-              Equip to {targetSlot} Slot
-            </Button>
-          )}
-          {!targetSlot && (
-            <Button onClick={() => onEquip(item, qty)} className="flex-1 w-full font-cinzel text-xs h-8">
-              <Plus className="w-3 h-3 mr-1" /> Add to Equipment
-            </Button>
-          )}
-        </div>
+      <div className="pt-2 border-t border-border flex flex-col gap-2">
+        {(item.category === 'Gear' || item.category === 'Potion/Oil') && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground font-crimson">Qty:</span>
+            <Input type="number" min={1} max={99} value={qty}
+              onChange={e => setQty(Math.max(1,parseInt(e.target.value)||1))}
+              className="h-7 w-20 text-xs bg-secondary/50 text-center" />
+          </div>
+        )}
+
+        {/* Equip to slot button — for wondrous/ring items when browsing a slot */}
+        {canEquipToSlot && (
+          <Button onClick={() => onEquipToSlot(item, browsingForSlot)}
+            className="w-full font-cinzel text-xs h-8 bg-primary">
+            💍 Equip to {slotLabel} Slot
+          </Button>
+        )}
+
+        {/* Add to equipment button — always shown, adds to slottedItems or gear */}
+        <Button onClick={() => onEquip(item, qty)}
+          variant={canEquipToSlot ? 'outline' : 'default'}
+          className="w-full font-cinzel text-xs h-8">
+          <Plus className="w-3 h-3 mr-1" />
+          {SLOTTED_CATEGORIES.includes(item.category) ? 'Add to Carried Items' : 'Add to Equipment'}
+        </Button>
       </div>
     </div>
   );
@@ -158,33 +174,25 @@ function PaperDoll({ character, updateCharacter, onBrowseSlot }) {
             <div key={slot.id} className={`border rounded-lg p-2 transition-colors ${
               full ? 'border-primary/40 bg-primary/5' : 'border-border bg-secondary/20 hover:border-primary/30'
             }`}>
-              {/* Slot header */}
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1">
                   <span className="text-sm">{slot.icon}</span>
                   <span className="font-cinzel text-xs text-primary">{slot.label}</span>
-                  {slot.max > 1 && (
-                    <span className="text-xs text-muted-foreground">×{slot.max}</span>
-                  )}
+                  {slot.max > 1 && <span className="text-xs text-muted-foreground">×{slot.max}</span>}
                 </div>
                 {!full && (
-                  <button
-                    onClick={() => onBrowseSlot(slot.id)}
+                  <button onClick={() => onBrowseSlot(slot.id)}
                     className="text-xs text-primary hover:text-primary/80 font-cinzel"
-                    title={`Browse ${slot.hint}`}
-                  >
+                    title={`Browse ${slot.hint}`}>
                     +
                   </button>
                 )}
               </div>
 
-              {/* Equipped items */}
               {items.length === 0 ? (
-                <button
-                  onClick={() => onBrowseSlot(slot.id)}
+                <button onClick={() => onBrowseSlot(slot.id)}
                   className="w-full text-left text-xs text-muted-foreground/40 font-crimson italic hover:text-muted-foreground/70 transition-colors py-1"
-                  title={slot.hint}
-                >
+                  title={slot.hint}>
                   Empty — {slot.hint.split(',')[0]}...
                 </button>
               ) : (
@@ -194,10 +202,8 @@ function PaperDoll({ character, updateCharacter, onBrowseSlot }) {
                       <span className="font-crimson text-xs flex-1 truncate text-foreground/90" title={item.name}>
                         {item.name}
                       </span>
-                      <button
-                        onClick={() => removeSlotItem(slot.id, idx)}
-                        className="opacity-0 group-hover:opacity-100 text-red-400 shrink-0"
-                      >
+                      <button onClick={() => removeSlotItem(slot.id, idx)}
+                        className="opacity-0 group-hover:opacity-100 text-red-400 shrink-0">
                         <X className="w-3 h-3" />
                       </button>
                     </div>
@@ -225,10 +231,16 @@ export default function EquipmentStep({ character, updateCharacter }) {
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [slotFilter, setSlotFilter] = useState(null);
+  const [browsingForSlot, setBrowsingForSlot] = useState(null); // which paper doll slot we're shopping for
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
-    loadEquipmentIndex().then(data => { console.log('[Equip] loaded', data.length, 'items, rings:', data.filter(i=>i.category==='Ring').length); setItems(data); setLoading(false); })
+    loadEquipmentIndex()
+      .then(data => {
+        console.log('[Equip] loaded', data.length, 'items, rings:', data.filter(i=>i.category==='Ring').length);
+        setItems(data);
+        setLoading(false);
+      })
       .catch(err => { console.error('[Equip] failed', err); setLoading(false); });
   }, []);
 
@@ -237,30 +249,48 @@ export default function EquipmentStep({ character, updateCharacter }) {
     return ['all', ...Array.from(s).sort()];
   }, [items]);
 
+  // Called when user clicks a paper doll slot
   const handleBrowseSlot = (slotId) => {
-    setSlotFilter(slotId);
-    setCategory('Wondrous Item');
+    setBrowsingForSlot(slotId);
     setSearch('');
+    setSelected(null);
+
+    if (slotId === 'Ring') {
+      // Rings are their own category, not Wondrous Items
+      setCategory('Ring');
+      setSlotFilter(null);
+    } else {
+      // All other slots use Wondrous Item category with slot filter
+      setCategory('Wondrous Item');
+      setSlotFilter(slotId);
+    }
+
     document.getElementById('equip-browser')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // Equip item to a specific body slot (paper doll)
   const equipToSlot = (item, slotId) => {
+    if (!slotId) return;
     const slotDef = BODY_SLOTS.find(s => s.id === slotId);
     if (!slotDef) return;
     const slotted = { ...(character.equipment?.slottedItems || {}) };
     const existing = Array.isArray(slotted[slotId]) ? slotted[slotId] : (slotted[slotId] ? [slotted[slotId]] : []);
-    if (existing.length >= slotDef.max) return;
+    if (existing.length >= slotDef.max) {
+      alert(`${slotLabel} slot is full (max ${slotDef.max}).`);
+      return;
+    }
     slotted[slotId] = [...existing, { id: item.id, name: item.name, cost: item.cost, weight: item.weight || 0 }];
     updateCharacter({ equipment: { ...character.equipment, slottedItems: slotted } });
     setSelected(null);
+    setBrowsingForSlot(null);
   };
 
   const filtered = useMemo(() => {
     let list = items;
     if (category !== 'All') list = list.filter(i => i.category === category);
     if (sourceFilter !== 'all') list = list.filter(i => i.source === sourceFilter);
-    
-    // Slot filter (wondrous items only)
+
+    // Slot filter only applies when viewing Wondrous Items
     if (slotFilter && category === 'Wondrous Item') {
       if (slotFilter === 'Slotless') {
         list = list.filter(i => !i.slot || i.slot === '');
@@ -268,17 +298,12 @@ export default function EquipmentStep({ character, updateCharacter }) {
         list = list.filter(i => i.slot === slotFilter);
       }
     }
-    
+
     if (search.trim()) {
       const q = search.toLowerCase();
-      const before = list.length;
-      list = list.filter(i => (
-        (i.name && i.name.toLowerCase().includes(q)) ||
-        (i.source && i.source.toLowerCase().includes(q)) ||
-        (i.description && i.description.toLowerCase().includes(q))
-      ));
-      if (list.length === 0 && before > 0) console.log('[Equip] Search "' + q + '": 0 of ' + before + ' results. Check fields:', before > 0 ? 'name/source/description missing?' : 'post-filter pool was empty');
+      list = list.filter(i => i.name && i.name.toLowerCase().includes(q));
     }
+
     return list;
   }, [items, category, sourceFilter, search, slotFilter]);
 
@@ -290,22 +315,25 @@ export default function EquipmentStep({ character, updateCharacter }) {
       weapons.push({
         id: item.id, name: item.name, damage: item.damage,
         critRange: item.critRange, damageType: item.damageType,
-        range: item.range, attackBonus: 0, weight: item.weight,
-        qty: 1, notes: '',
+        range: item.range, attackBonus: 0, weight: item.weight, qty: 1, notes: '',
       });
       updateCharacter({ equipment: { ...equip, weapons } });
+
     } else if (item.category === 'Armor' && item.armorType === 'Shield') {
       updateCharacter({ equipment: { ...equip, shield: {
         id: item.id, name: item.name, acBonus: item.acBonus,
         acp: item.acp, spellFail: item.spellFail, weight: item.weight,
       }}});
+
     } else if (item.category === 'Armor') {
       updateCharacter({ equipment: { ...equip, armor: {
         id: item.id, name: item.name, acBonus: item.acBonus,
         maxDex: item.maxDex, acp: item.acp, spellFail: item.spellFail,
         type: item.armorType.toLowerCase(), weight: item.weight,
       }}});
+
     } else {
+      // Everything else goes to the gear list (carried, not worn in a slot)
       const gear = [...(equip.gear || [])];
       const existing = gear.findIndex(g => g.id === item.id);
       if (existing >= 0) gear[existing] = { ...gear[existing], qty: (gear[existing].qty||1) + qty };
@@ -341,18 +369,13 @@ export default function EquipmentStep({ character, updateCharacter }) {
 
   return (
     <div className="space-y-4">
-      {/* Paper doll */}
       <PaperDoll character={character} updateCharacter={updateCharacter} onBrowseSlot={handleBrowseSlot} />
 
-      {/* Currently equipped */}
       <SectionCard title={`Equipped — ${totalWeight.toFixed(1)} lb total`}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Weapons */}
           <div>
             <p className="text-xs font-cinzel text-muted-foreground mb-1">WEAPONS</p>
-            {(equip.weapons||[]).length === 0 && (
-              <p className="text-xs text-muted-foreground/50 font-crimson italic">None</p>
-            )}
+            {(equip.weapons||[]).length === 0 && <p className="text-xs text-muted-foreground/50 font-crimson italic">None</p>}
             {(equip.weapons||[]).map((w, i) => (
               <div key={i} className="flex items-center gap-2 bg-secondary/30 rounded px-2 py-1 mb-1 group">
                 <div className="flex-1 min-w-0">
@@ -366,7 +389,6 @@ export default function EquipmentStep({ character, updateCharacter }) {
             ))}
           </div>
 
-          {/* Armor & Shield */}
           <div>
             <p className="text-xs font-cinzel text-muted-foreground mb-1">ARMOR & SHIELD</p>
             {equip.armor ? (
@@ -394,10 +416,9 @@ export default function EquipmentStep({ character, updateCharacter }) {
           </div>
         </div>
 
-        {/* Gear */}
         {(equip.gear||[]).length > 0 && (
           <div className="mt-3">
-            <p className="text-xs font-cinzel text-muted-foreground mb-1">GEAR & MAGIC ITEMS</p>
+            <p className="text-xs font-cinzel text-muted-foreground mb-1">GEAR & CARRIED ITEMS</p>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
               {(equip.gear||[]).map((g, i) => (
                 <div key={i} className="flex items-center gap-1 bg-secondary/20 rounded px-2 py-1 group text-xs">
@@ -411,7 +432,6 @@ export default function EquipmentStep({ character, updateCharacter }) {
           </div>
         )}
 
-        {/* Currency */}
         <div className="mt-3 border-t border-border pt-3">
           <p className="text-xs font-cinzel text-muted-foreground mb-2">CURRENCY</p>
           <div className="flex gap-3 flex-wrap">
@@ -427,9 +447,20 @@ export default function EquipmentStep({ character, updateCharacter }) {
         </div>
       </SectionCard>
 
-      {/* Browser */}
       <SectionCard title="Equipment Browser" id="equip-browser">
-        {/* Filters */}
+        {/* Active slot context banner */}
+        {browsingForSlot && (
+          <div className="flex items-center justify-between mb-3 px-3 py-2 bg-primary/10 border border-primary/30 rounded-lg">
+            <span className="text-xs font-crimson text-primary">
+              {BODY_SLOTS.find(s=>s.id===browsingForSlot)?.icon} Browsing items for <strong>{browsingForSlot}</strong> slot
+            </span>
+            <button onClick={() => { setBrowsingForSlot(null); setSlotFilter(null); }}
+              className="text-xs text-muted-foreground hover:text-foreground font-crimson">
+              Clear ×
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2 mb-3 items-center">
           <Input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search items…"
@@ -442,11 +473,11 @@ export default function EquipmentStep({ character, updateCharacter }) {
           </Select>
         </div>
 
-        {/* Slot filter row */}
+        {/* Slot filter — only shown for Wondrous Items */}
         {category === 'Wondrous Item' && (
           <div className="flex flex-wrap gap-1 mb-3 items-center">
             <span className="text-xs text-muted-foreground font-crimson">Slot:</span>
-            {['All Slots', ...BODY_SLOTS.map(s => s.id), 'Slotless'].map(s => (
+            {['All Slots', ...BODY_SLOTS.filter(s => s.id !== 'Ring').map(s => s.id), 'Slotless'].map(s => (
               <button key={s}
                 onClick={() => setSlotFilter(s === 'All Slots' ? null : s)}
                 className={`text-xs px-2 py-0.5 rounded font-crimson transition-colors ${
@@ -463,7 +494,12 @@ export default function EquipmentStep({ character, updateCharacter }) {
         {/* Category tabs */}
         <div className="flex overflow-x-auto gap-1 pb-1 mb-3">
           {CATEGORIES.map(cat => (
-            <button key={cat} onClick={() => { setCategory(cat); if (cat !== 'Wondrous Item') setSlotFilter(null); }}
+            <button key={cat}
+              onClick={() => {
+                setCategory(cat);
+                if (cat !== 'Wondrous Item') setSlotFilter(null);
+                if (cat !== 'Ring' && cat !== 'Wondrous Item') setBrowsingForSlot(null);
+              }}
               className={`shrink-0 text-xs px-2.5 py-1 rounded font-cinzel transition-colors ${
                 category === cat ? 'bg-primary text-primary-foreground' : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
               }`}>
@@ -472,7 +508,6 @@ export default function EquipmentStep({ character, updateCharacter }) {
           ))}
         </div>
 
-        {/* List + detail */}
         <div className="flex gap-3" style={{ minHeight: 400 }}>
           <div className="flex-1 border border-border rounded-lg overflow-y-auto" style={{ maxHeight: 480 }}>
             {loading ? (
@@ -515,7 +550,13 @@ export default function EquipmentStep({ character, updateCharacter }) {
 
           {selected && (
             <div className="w-80 shrink-0 border border-border rounded-lg bg-secondary/10 overflow-hidden">
-              <ItemDetail item={selected} onEquip={addItem} onEquipToSlot={equipToSlot} targetSlot={slotFilter} onClose={() => setSelected(null)} />
+              <ItemDetail
+                item={selected}
+                onEquip={addItem}
+                onEquipToSlot={equipToSlot}
+                browsingForSlot={browsingForSlot}
+                onClose={() => setSelected(null)}
+              />
             </div>
           )}
         </div>
