@@ -168,6 +168,7 @@ export function getDefaultCharacter() {
       shield: null, // {name,acBonus,acp,spellFail,weight}
       gear: [],     // [{name,weight,qty,value}]
       currency: { pp: 0, gp: 0, sp: 0, cp: 0 },
+      slottedItems: {}, // { slotId: [{id, name, cost, weight}] } — paper doll worn items
     },
 
     // Misc modifiers
@@ -353,10 +354,13 @@ export function getHPStatus(current, max, con) {
 }
 
 export function calculateTotalWeight(char) {
-  const wepWeight = (char.equipment?.weapons || []).reduce((s,w) => s+(w.weight||0)*(w.qty||1), 0);
-  const armorWeight = (char.equipment?.armor?.weight || 0) + (char.equipment?.shield?.weight || 0);
-  const gearWeight = (char.equipment?.gear || []).reduce((s,g) => s+(g.weight||0)*(g.qty||1), 0);
-  return wepWeight + armorWeight + gearWeight;
+  const wepWeight    = (char.equipment?.weapons || []).reduce((s,w) => s+(w.weight||0)*(w.qty||1), 0);
+  const armorWeight  = (char.equipment?.armor?.weight || 0) + (char.equipment?.shield?.weight || 0);
+  const gearWeight   = (char.equipment?.gear || []).reduce((s,g) => s+(g.weight||0)*(g.qty||1), 0);
+  const slottedWeight = Object.values(char.equipment?.slottedItems || {})
+    .flat()
+    .reduce((s, i) => s + (i?.weight || 0), 0);
+  return wepWeight + armorWeight + gearWeight + slottedWeight;
 }
 
 export function getDerivedStats(char) {
