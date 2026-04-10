@@ -198,9 +198,9 @@ export default function CharacterSheet({ character }) {
           </div>
           <div>
             <p className="text-primary font-cinzel text-xs font-semibold mb-1">Armor</p>
-            {(character.equipment.armor || []).map((a, i) => (
-              <div key={i} className="text-foreground">{a.name} — AC+{a.acBonus} MaxDEX {a.maxDex}</div>
-            ))}
+            {character.equipment?.armor && (
+              <div className="text-foreground">{character.equipment.armor.name} — AC+{character.equipment.armor.acBonus}</div>
+          )}
           </div>
           <div>
             <p className="text-primary font-cinzel text-xs font-semibold mb-1">Gear</p>
@@ -211,7 +211,7 @@ export default function CharacterSheet({ character }) {
         </div>
         <div className="mt-2 text-xs font-crimson text-muted-foreground">
           Total Weight: {getTotalWeight(character).toFixed(1)} lbs |
-          Money: {character.money.pp}pp {character.money.gp}gp {character.money.sp}sp {character.money.cp}cp
+          Money: {(character.equipment?.currency || character.money || {pp:0,gp:0,sp:0,cp:0}).pp}pp {(character.equipment?.currency || character.money || {gp:0}).gp}gp {(character.equipment?.currency || character.money || {sp:0}).sp}sp {(character.equipment?.currency || character.money || {cp:0}).cp}cp
         </div>
       </SectionCard>
 
