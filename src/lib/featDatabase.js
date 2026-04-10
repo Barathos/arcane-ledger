@@ -16,10 +16,20 @@ export async function loadFeatDatabase() {
   if (_loadPromise) return _loadPromise;
 
   _loadPromise = fetch(FEAT_INDEX_URL)
-    .then(r => r.json())
-    .then(data => {
-      _featDatabase = data.filter(f => !isSystemFeat(f));
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.text();
+    })
+    .then(text => {
+      const data = JSON.parse(text);
+      _featDatabase = Array.isArray(data) ? data : [];
       return _featDatabase;
+    })
+    .catch(err => {
+      console.warn('Failed to load feat database:', err.message);
+      _featDatabase = [];
+      _loadPromise = null;
+      return [];
     });
 
   return _loadPromise;
@@ -30,10 +40,20 @@ export async function loadFeatDescriptions() {
   if (_descLoadPromise) return _descLoadPromise;
 
   _descLoadPromise = fetch(FEAT_DESC_URL)
-    .then(r => r.json())
-    .then(data => {
-      _featDescriptions = data;
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.text();
+    })
+    .then(text => {
+      const data = JSON.parse(text);
+      _featDescriptions = data && typeof data === 'object' ? data : {};
       return _featDescriptions;
+    })
+    .catch(err => {
+      console.warn('Failed to load feat descriptions:', err.message);
+      _featDescriptions = {};
+      _descLoadPromise = null;
+      return {};
     });
 
   return _descLoadPromise;
