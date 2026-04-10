@@ -387,7 +387,9 @@ export function getTotalLevel(character) {
 
 export function getAbilityScore(character, ability) {
   const base = character.baseAbilities[ability] || 10;
-  const raceMod = RACES[character.race]?.abilityMods[ability] || 0;
+  // Prefer SRD race data over hardcoded RACES table
+  const srdMods = character.srdRaceData?.abilityMods || {};
+  const raceMod = (srdMods[ability] ?? RACES[character.race]?.abilityMods[ability]) || 0;
   const levelUps = Object.values(character.levelUpAbilities || {}).filter(a => a === ability).length;
   return base + raceMod + levelUps;
 }
