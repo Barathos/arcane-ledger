@@ -1,6 +1,11 @@
 // D&D 3.5 SRD Race Database Service
+// This data is from a finalized game system (D&D 3.5e, ~2007) and never changes.
+// Once fetched, it is cached permanently in localStorage.
 
-// Primary sources: URL keyed by source book name
+const CACHE_KEY = 'dnd35_race_database';
+const PROGRESS_KEY = 'dnd35_race_db_progress'; // tracks which sources have been fetched
+
+// Primary sources
 const SRD_RACE_PAGES = {
   "Player's Handbook":            "https://srd.dndtools.org/srd/races/racesCore.html",
   "Monster Manual":               "https://srd.dndtools.org/srd/races/monstersAsRaces.html",
@@ -54,6 +59,12 @@ const SRD_RACE_PAGES_SECONDARY = [
   "https://srd.dndtools.org/srd/races/racesSecXen.html",
   "https://srd.dndtools.org/srd/races/racesSerKing.html",
 ];
+
+export const ALL_SOURCE_KEYS = [
+  ...Object.keys(SRD_RACE_PAGES),
+  ...SRD_RACE_PAGES_SECONDARY.map(u => u.split('/').pop().replace('.html', '')),
+];
+export const TOTAL_SOURCES = ALL_SOURCE_KEYS.length;
 
 export const RACE_SOURCE_CATALOG = {
   // PLAYER'S HANDBOOK
@@ -485,9 +496,7 @@ export const SOURCE_GROUPS = [
   },
 ];
 
-const CACHE_KEY = 'dnd35_race_database';
-const CACHE_TS_KEY = 'dnd35_race_db_timestamp';
-const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+// ─── Fetch helpers ───────────────────────────────────────────────────────────
 
 export async function fetchRacePage(url) {
   try {
@@ -496,13 +505,12 @@ export async function fetchRacePage(url) {
   } catch {}
   try {
     const r2 = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-    if (r2.ok) {
-      const d = await r2.json();
-      return d.contents;
-    }
+    if (r2.ok) { const d = await r2.json(); return d.contents; }
   } catch {}
   return null;
 }
+
+// ─── Parse helpers ───────────────────────────────────────────────────────────
 
 function parseAbilityMods(text) {
   const mods = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
@@ -644,21 +652,19 @@ export function parseRacesFromHTML(html, sourceLabel, sourceUrl) {
   return races;
 }
 
-// Build the initial stub DB from RACE_SOURCE_CATALOG (no stats yet)
+// ─── Stub builder ────────────────────────────────────────────────────────────
+
 export function buildCatalogStubs() {
   const db = {};
-  // Start with hardcoded fallback stats for well-known races
   Object.entries(FALLBACK_RACES).forEach(([name, data]) => {
     db[name] = { ...data, statsLoaded: true };
   });
-  // Add catalog stubs for races not in fallback
   Object.entries(RACE_SOURCE_CATALOG).forEach(([name, source]) => {
     if (!db[name]) {
       const sourceUrl = SRD_RACE_PAGES[source] || null;
       db[name] = {
         name, source,
-        size: null, speed: null,
-        abilityMods: null,
+        size: null, speed: null, abilityMods: null,
         LA: null, racialHD: 0, racialHDType: null,
         racialBAB: 0, racialSaves: { fort: 0, ref: 0, will: 0 },
         naturalArmor: 0, SR: null, darkvision: 0, lowLightVision: false,
@@ -672,69 +678,106 @@ export function buildCatalogStubs() {
   return db;
 }
 
-export async function loadAllRaces(onProgress) {
-  const db = buildCatalogStubs();
-  const primaryEntries = Object.entries(SRD_RACE_PAGES);
-  const total = primaryEntries.length + SRD_RACE_PAGES_SECONDARY.length;
-  let completed = 0;
+// ─── Progress helpers ─────────────────────────────────────────────────────────
 
-  const processFetch = async (url, sourceLabel) => {
+function getCompletedSources() {
+  try {
+    const raw = localStorage.getItem(PROGRESS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function markSourceComplete(key) {
+  const done = getCompletedSources();
+  if (!done.includes(key)) {
+    done.push(key);
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(done));
+  }
+}
+
+export function isFullyLoaded() {
+  const done = getCompletedSources();
+  return done.length >= TOTAL_SOURCES;
+}
+
+export function getLoadProgress() {
+  return { done: getCompletedSources().length, total: TOTAL_SOURCES };
+}
+
+// ─── Main load function (with resume) ────────────────────────────────────────
+
+export async function loadAllRacesWithResume(onProgress) {
+  // Load current db (may be partial from a previous interrupted run)
+  let db;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    db = raw ? JSON.parse(raw) : buildCatalogStubs();
+  } catch {
+    db = buildCatalogStubs();
+  }
+  if (Object.keys(db).length === 0) db = buildCatalogStubs();
+
+  const completedSources = getCompletedSources();
+  const primaryEntries = Object.entries(SRD_RACE_PAGES);
+  const allSources = [
+    ...primaryEntries.map(([label, url]) => ({ key: label, url, label })),
+    ...SRD_RACE_PAGES_SECONDARY.map(url => {
+      const key = url.split('/').pop().replace('.html', '');
+      return { key, url, label: key };
+    }),
+  ];
+
+  const total = allSources.length;
+  let completed = completedSources.length;
+
+  if (onProgress) onProgress(completed, total, { ...db });
+
+  for (const { key, url, label } of allSources) {
+    if (completedSources.includes(key)) continue; // already done — skip
+
     const html = await fetchRacePage(url);
     if (html) {
-      const races = parseRacesFromHTML(html, sourceLabel, url);
+      const races = parseRacesFromHTML(html, label, url);
       races.forEach(r => { db[r.name] = r; });
     }
+
+    markSourceComplete(key);
     completed++;
+
+    // Persist partial db after each source so interrupted loads can resume
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(db)); } catch {}
+
     if (onProgress) onProgress(completed, total, { ...db });
-  };
-
-  // Primary sources
-  for (const [sourceLabel, url] of primaryEntries) {
-    await processFetch(url, sourceLabel);
   }
 
-  // Secondary sources (best-effort)
-  for (const url of SRD_RACE_PAGES_SECONDARY) {
-    const sourceLabel = url.split('/').pop().replace('.html', '');
-    await processFetch(url, sourceLabel);
-  }
-
-  localStorage.setItem(CACHE_KEY, JSON.stringify(db));
-  localStorage.setItem(CACHE_TS_KEY, Date.now().toString());
   return db;
 }
 
-export function getCachedRaceDatabase() {
-  const ts = localStorage.getItem(CACHE_TS_KEY);
-  const data = localStorage.getItem(CACHE_KEY);
-  if (!data || !ts) return null;
-  if (Date.now() - parseInt(ts) > CACHE_TTL) return null;
-  try { return JSON.parse(data); } catch { return null; }
+// ─── Public entry point ───────────────────────────────────────────────────────
+
+export async function getRaceDatabase(onProgress) {
+  // If we have ANY cached data, use it — this data never changes
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      const db = JSON.parse(cached);
+      if (Object.keys(db).length > 0) return db;
+    }
+  } catch {}
+
+  // Only fetch if we have nothing at all
+  return await loadAllRacesWithResume(onProgress);
 }
 
-export function clearRaceCache() {
+// ─── Debug: hard reset (escape hatch only) ───────────────────────────────────
+
+export function hardResetRaceDatabase() {
   localStorage.removeItem(CACHE_KEY);
-  localStorage.removeItem(CACHE_TS_KEY);
+  localStorage.removeItem(PROGRESS_KEY);
 }
 
-export function getCacheTimestamp() {
-  const ts = localStorage.getItem(CACHE_TS_KEY);
-  return ts ? new Date(parseInt(ts)) : null;
-}
+// ─── Fallback hardcoded race data ────────────────────────────────────────────
 
-export function formatAbilityMods(abilityMods) {
-  if (!abilityMods) return '';
-  const parts = [];
-  const map = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
-  Object.entries(abilityMods).forEach(([k, v]) => {
-    if (v !== 0) parts.push(`${v > 0 ? '+' : ''}${v} ${map[k]}`);
-  });
-  return parts.join(', ');
-}
-
-// ─────────────────────────────────────────────
-// FALLBACK HARDCODED RACE DATABASE
-// ─────────────────────────────────────────────
 export const FALLBACK_RACES = {
   "Human": {
     name: "Human", source: "Player's Handbook", size: "Medium", speed: 30,

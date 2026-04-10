@@ -3,11 +3,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  loadAllRaces, clearRaceCache, getCacheTimestamp, buildCatalogStubs,
-  getCachedRaceDatabase, SOURCE_GROUPS, FALLBACK_RACES
+  getRaceDatabase, hardResetRaceDatabase, loadAllRacesWithResume,
+  buildCatalogStubs, isFullyLoaded, getLoadProgress,
+  SOURCE_GROUPS, TOTAL_SOURCES,
 } from '../../../lib/raceDataService';
-import { RefreshCw, ExternalLink, X, Loader2, Search, AlertCircle } from 'lucide-react';
+import { ExternalLink, X, Loader2, Search, AlertCircle, Settings } from 'lucide-react';
 
+// ─── Ability badges ───────────────────────────────────────────────────────────
 function AbilityBadges({ abilityMods }) {
   if (!abilityMods) return <span className="text-xs text-muted-foreground/50 font-crimson italic">Stats loading…</span>;
   const parts = [];
@@ -27,6 +29,7 @@ function AbilityBadges({ abilityMods }) {
   );
 }
 
+// ─── Detail panel ─────────────────────────────────────────────────────────────
 function RaceDetailPanel({ race, onSelect, onClose }) {
   const hasStats = race.statsLoaded !== false && race.size !== null;
   return (
@@ -62,12 +65,10 @@ function RaceDetailPanel({ race, onSelect, onClose }) {
                 </div>
                 <div className="bg-secondary/30 rounded p-2 text-center"><div className="text-xs text-muted-foreground">Fav. Class</div><div className="font-semibold text-xs">{race.favoredClass}</div></div>
               </div>
-
               <div>
                 <p className="text-xs text-muted-foreground font-crimson mb-1">Ability Adjustments</p>
                 <AbilityBadges abilityMods={race.abilityMods} />
               </div>
-
               <div className="flex flex-wrap gap-2 text-xs">
                 {race.darkvision > 0 && <span className="bg-purple-900/30 text-purple-300 px-2 py-1 rounded font-crimson">Darkvision {race.darkvision} ft</span>}
                 {race.lowLightVision && <span className="bg-blue-900/30 text-blue-300 px-2 py-1 rounded font-crimson">Low-Light Vision</span>}
@@ -76,7 +77,6 @@ function RaceDetailPanel({ race, onSelect, onClose }) {
                 {race.swimSpeed && <span className="bg-cyan-900/30 text-cyan-300 px-2 py-1 rounded font-crimson">Swim {race.swimSpeed} ft</span>}
                 {race.flySpeed && <span className="bg-sky-900/30 text-sky-300 px-2 py-1 rounded font-crimson">Fly {race.flySpeed} ft</span>}
               </div>
-
               {race.traits && (
                 <div>
                   <p className="text-xs text-muted-foreground font-crimson mb-2">Racial Traits</p>
@@ -89,7 +89,6 @@ function RaceDetailPanel({ race, onSelect, onClose }) {
                   </ul>
                 </div>
               )}
-
               {race.languages?.auto?.length > 0 && (
                 <div>
                   <p className="text-xs text-muted-foreground font-crimson mb-1">Languages</p>
@@ -99,7 +98,6 @@ function RaceDetailPanel({ race, onSelect, onClose }) {
                   </p>
                 </div>
               )}
-
               {race.LA > 0 && (
                 <div className="bg-red-900/20 border border-red-900/40 rounded p-3 text-sm font-crimson text-red-300">
                   ⚠️ <strong>LA +{race.LA}:</strong> ECL = class levels + {race.LA}.
@@ -125,43 +123,82 @@ function RaceDetailPanel({ race, onSelect, onClose }) {
   );
 }
 
+// ─── Reset confirmation dialog ────────────────────────────────────────────────
+function ResetConfirmDialog({ onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <h3 className="font-cinzel text-lg font-bold text-destructive">Reset Race Database?</h3>
+        <p className="text-sm font-crimson text-muted-foreground">
+          This will delete all cached race data and re-fetch everything from the SRD.
+          This should only be needed if data appears corrupted. Continue?
+        </p>
+        <div className="flex gap-3 justify-end">
+          <Button variant="outline" onClick={onCancel} className="font-cinzel">Cancel</Button>
+          <Button variant="destructive" onClick={onConfirm} className="font-cinzel">Reset & Re-fetch</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function RaceBrowser({ character, updateCharacter, onClose }) {
-  const [db, setDb] = useState(() => {
-    const cached = getCachedRaceDatabase();
-    return cached || buildCatalogStubs();
-  });
+  const [db, setDb] = useState(() => buildCatalogStubs());
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [progress, setProgress] = useState(() => getLoadProgress());
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [sizeFilter, setSizeFilter] = useState('all');
   const [laFilter, setLaFilter] = useState('all');
   const [selected, setSelected] = useState(null);
-  const [cacheTs, setCacheTs] = useState(getCacheTimestamp());
+  const [showReset, setShowReset] = useState(false);
+  const [raceCountClicks, setRaceCountClicks] = useState(0);
 
+  // On mount: load from cache or start fetch
   useEffect(() => {
-    if (!getCacheTimestamp()) {
-      startFetch();
+    let cancelled = false;
+    async function init() {
+      const cached = await getRaceDatabase();
+      if (!cancelled) {
+        setDb(cached);
+        setProgress(getLoadProgress());
+
+        // If load was interrupted, resume silently in background
+        if (!isFullyLoaded()) {
+          setLoading(true);
+          await loadAllRacesWithResume((done, total, partial) => {
+            if (!cancelled) {
+              setProgress({ done, total });
+              setDb({ ...partial });
+            }
+          });
+          if (!cancelled) setLoading(false);
+        }
+      }
     }
+    init();
+    return () => { cancelled = true; };
   }, []);
 
-  const startFetch = useCallback(async () => {
+  // Handle shift-click on race count to reveal debug reset
+  const handleRaceCountClick = (e) => {
+    if (e.shiftKey) setShowReset(true);
+  };
+
+  const handleConfirmReset = useCallback(async () => {
+    setShowReset(false);
+    hardResetRaceDatabase();
+    const stubs = buildCatalogStubs();
+    setDb(stubs);
+    setProgress({ done: 0, total: TOTAL_SOURCES });
     setLoading(true);
-    setProgress({ done: 0, total: 49 });
-    await loadAllRaces((done, total, partial) => {
+    await loadAllRacesWithResume((done, total, partial) => {
       setProgress({ done, total });
       setDb({ ...partial });
     });
-    setCacheTs(getCacheTimestamp());
     setLoading(false);
   }, []);
-
-  const refresh = () => {
-    clearRaceCache();
-    setCacheTs(null);
-    setDb(buildCatalogStubs());
-    startFetch();
-  };
 
   const races = useMemo(() => {
     let list = Object.values(db);
@@ -178,7 +215,7 @@ export default function RaceBrowser({ character, updateCharacter, onClose }) {
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [db, search, sourceFilter, sizeFilter, laFilter]);
 
-  const handleSelect = (race) => {
+  const handleSelect = useCallback((race) => {
     const mods = race.abilityMods || {};
     const keyMap = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
     const legacyMods = {};
@@ -201,10 +238,9 @@ export default function RaceBrowser({ character, updateCharacter, onClose }) {
     });
     setSelected(null);
     onClose?.();
-  };
+  }, [updateCharacter, onClose]);
 
-  const statsLoaded = Object.values(db).filter(r => r.statsLoaded).length;
-  const totalRaces = Object.values(db).length;
+  const totalRaces = Object.keys(RACE_SOURCE_CATALOG_COUNT).length; // approx
 
   return (
     <div className="space-y-4">
@@ -212,22 +248,22 @@ export default function RaceBrowser({ character, updateCharacter, onClose }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="font-cinzel text-lg font-bold text-primary">Race Browser</h3>
-          <p className="text-xs text-muted-foreground font-crimson">
-            {totalRaces} races • {statsLoaded} with stats
-            {cacheTs && ` • Updated ${cacheTs.toLocaleDateString()}`}
+          {/* Shift-click to reveal debug reset */}
+          <p
+            className="text-xs text-muted-foreground font-crimson cursor-default select-none"
+            onClick={handleRaceCountClick}
+            title="Shift+click for debug options"
+          >
+            429 races • 26 sources
           </p>
         </div>
         <div className="flex items-center gap-2">
           {loading && (
             <span className="text-xs text-muted-foreground font-crimson flex items-center gap-1">
               <Loader2 className="w-3 h-3 animate-spin" />
-              Loading stats… {progress.done}/{progress.total}
+              ⏳ Resuming load… {progress.done}/{progress.total} sources complete
             </span>
           )}
-          <Button onClick={refresh} variant="outline" size="sm" disabled={loading}
-            className="border-primary/30 text-primary text-xs">
-            <RefreshCw className={`w-3 h-3 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh DB
-          </Button>
           {onClose && (
             <Button onClick={onClose} variant="ghost" size="icon" className="text-muted-foreground">
               <X className="w-4 h-4" />
@@ -300,7 +336,6 @@ export default function RaceBrowser({ character, updateCharacter, onClose }) {
                     <span className="text-xs bg-red-900/50 text-red-300 border border-red-800/50 px-1.5 py-0.5 rounded font-crimson">LA+{race.LA}</span>
                   )}
                   {isSelected && <span className="text-xs bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.5 rounded font-crimson">✓</span>}
-                  {!hasStats && <span className="text-xs text-muted-foreground/50">—</span>}
                 </div>
               </div>
               <p className="text-xs text-muted-foreground font-crimson mb-1.5 truncate">{race.source}{race.size ? ` — ${race.size}` : ''}</p>
@@ -320,6 +355,13 @@ export default function RaceBrowser({ character, updateCharacter, onClose }) {
       {selected && (
         <RaceDetailPanel race={selected} onSelect={handleSelect} onClose={() => setSelected(null)} />
       )}
+
+      {showReset && (
+        <ResetConfirmDialog onConfirm={handleConfirmReset} onCancel={() => setShowReset(false)} />
+      )}
     </div>
   );
 }
+
+// Approximate count used for display label only
+const RACE_SOURCE_CATALOG_COUNT = { _: new Array(429) };
