@@ -2,8 +2,8 @@
 // D&D 3.5 Feat Database — lazy-loaded from GitHub, cached in memory.
 // ============================================================
 
-const FEAT_INDEX_URL = 'https://raw.githubusercontent.com/Barathos/arcane-ledger/main/dnd35_feat_index.json';
-const FEAT_DESC_URL  = 'https://raw.githubusercontent.com/Barathos/arcane-ledger/main/dnd35_feat_descriptions.json';
+const FEAT_INDEX_URL = 'https://raw.githubusercontent.com/Barathos/arcane-ledger/main/dnd35_feat_index_v2.json';
+const FEAT_DESC_URL  = 'https://raw.githubusercontent.com/Barathos/arcane-ledger/main/dnd35_feat_descriptions_v2.json';
 
 let _featIndex = null;
 let _featDescriptions = null;
