@@ -151,9 +151,12 @@ export default function FeatBrowser({ character, updateCharacter }) {
   const [fighterOnly, setFighterOnly] = useState(false);
   const [selected, setSelected] = useState(null);
 
+  const [loadFailed, setLoadFailed] = useState(false);
+
   useEffect(() => {
     loadFeatDatabase().then(data => {
       setFeats(data);
+      setLoadFailed(data.length === 0);
       setLoading(false);
     });
   }, []);
@@ -275,6 +278,10 @@ export default function FeatBrowser({ character, updateCharacter }) {
           {loading ? (
             <div className="flex items-center justify-center h-40 text-muted-foreground font-crimson text-sm">
               Loading feats…
+            </div>
+          ) : loadFailed ? (
+            <div className="flex items-center justify-center h-40 text-center px-4">
+              <p className="text-red-400 font-crimson text-sm">Failed to load feat database.<br/><span className="text-xs text-muted-foreground">Check the browser console for details.</span></p>
             </div>
           ) : (
             <>
