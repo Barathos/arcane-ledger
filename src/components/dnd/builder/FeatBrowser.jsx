@@ -165,6 +165,8 @@ export default function FeatBrowser({ character, updateCharacter }) {
         const data = await loadFeatDatabase();
         setFeats(data);
         setLoadFailed(data.length === 0);
+        const ce = data.find(f => f.name === 'Combat Expertise');
+        console.log('[FeatDB] Combat Expertise in DB:', ce);
       } catch (err) {
         console.error('[FeatBrowser] Failed to load feats:', err);
         setLoadFailed(true);
@@ -188,11 +190,18 @@ export default function FeatBrowser({ character, updateCharacter }) {
       list = list.filter(f => f.fighterBonus === true);
     }
     if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(f =>
-        f.name.toLowerCase().includes(q) ||
-        f.description?.toLowerCase().includes(q)
-      );
+      const q = search.toLowerCase().trim();
+      const scored = list.map(feat => {
+        const name = feat.name.toLowerCase();
+        const desc = (feat.description || '').toLowerCase();
+        let score = 0;
+        if (name === q)              score = 100;
+        else if (name.startsWith(q)) score = 80;
+        else if (name.includes(q))   score = 60;
+        else if (desc.includes(q))   score = 20;
+        return { feat, score };
+      }).filter(({ score }) => score > 0).sort((a, b) => b.score - a.score);
+      list = scored.map(({ feat }) => feat);
     }
     if (availability !== 'Show All') {
       list = list.filter(feat => {
