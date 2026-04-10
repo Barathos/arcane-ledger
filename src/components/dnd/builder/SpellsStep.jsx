@@ -27,10 +27,10 @@ export default function SpellsStep({ character, updateCharacter }) {
   const addSpell = () => {
     if (!newSpellName.trim() || !newSpellClass) return;
     const key = `${newSpellClass}_${newSpellLevel}`;
-    const current = character.spellsKnown[key] || [];
+    const current = (character.spellsKnown || {})[key] || [];
     updateCharacter({
       spellsKnown: {
-        ...character.spellsKnown,
+        ...(character.spellsKnown || {}),
         [key]: [...current, { name: newSpellName.trim(), description: newSpellDesc.trim() }]
       }
     });
@@ -39,10 +39,10 @@ export default function SpellsStep({ character, updateCharacter }) {
   };
 
   const removeSpell = (key, idx) => {
-    const current = [...(character.spellsKnown[key] || [])];
+    const current = [...((character.spellsKnown || {})[key] || [])];
     current.splice(idx, 1);
     updateCharacter({
-      spellsKnown: { ...character.spellsKnown, [key]: current }
+      spellsKnown: { ...(character.spellsKnown || {}), [key]: current }
     });
   };
 
@@ -104,7 +104,7 @@ export default function SpellsStep({ character, updateCharacter }) {
             {/* Spell lists by level */}
             {Array.from({ length: 10 }, (_, i) => i).map(level => {
               const key = `${cls.name}_${level}`;
-              const spells = character.spellsKnown[key] || [];
+              const spells = (character.spellsKnown || {})[key] || [];
               if (spells.length === 0) return null;
               return (
                 <div key={level} className="mb-2">
