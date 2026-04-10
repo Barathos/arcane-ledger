@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { loadFeatDatabase, getFeatDatabase, FEAT_CATEGORIES, loadFeatDescriptions, getFeatDescription } from '../../../lib/featDatabase';
-import { checkAllPrereqs, getTotalLevel, buildCharacterState, SKILL_LIST } from '../../../lib/characterEngine';
+import { checkAllPrereqs, getTotalLevel, buildCharacterState, SKILL_LIST, getRacialBenefits } from '../../../lib/characterEngine';
 import { X } from 'lucide-react';
 
 const COMMON_WEAPONS = ['Longsword','Shortsword','Rapier','Greatsword','Battleaxe','Greataxe','Dagger','Handaxe','Warhammer','Longbow','Shortbow','Crossbow, Heavy','Spear','Quarterstaff','Flail','Mace, Heavy'];
@@ -71,9 +71,12 @@ function renderMarkdown(text) {
 
 function getFeatSlots(character) {
   const totalLevel = getTotalLevel(character);
-  let slots = Math.ceil(totalLevel / 2);
-  const isHuman = character.race?.name === 'Human' || character.race?.id === 'rHuman2' || character.race?.name?.includes('Human');
-  if (isHuman && totalLevel >= 1) slots += 1;
+  let slots = totalLevel === 0 ? 0 : Math.ceil(totalLevel / 2);
+  
+  const benefits = getRacialBenefits(character);
+  if ((benefits?.bonusFeatAtL1 || (character.race?.name === 'Human') || (character.race?.id === 'rHuman2')) && totalLevel >= 1) {
+    slots += 1;
+  }
 
   const fighterLevels = (character.classes || []).find(c => c.name === 'Fighter')?.levels || 0;
   const fighterBonusSlots = fighterLevels > 0 ? 1 + Math.floor(fighterLevels / 2) : 0;

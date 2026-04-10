@@ -5,6 +5,118 @@
 
 import { getFeatDatabase, getFeatById } from './featDatabase';
 
+// ─── RACIAL BENEFITS DATABASE ────────────────────────────────────────────────────
+
+export const RACIAL_BENEFITS = {
+  'human': {
+    bonusFeatAtL1: true,
+    extraSkillPointPerLevel: true,
+    extraSkillPointsAtL1: 4,
+  },
+  'dwarf': {
+    saveVsPoison: 2,
+    saveVsSpells: 2,
+    skillBonus: { kAppraise: 2, kCraft: 2 },
+    attackVsOrcGoblinoid: 1,
+    acVsGiants: 4,
+    weaponFamiliarity: ['Dwarven Waraxe', 'Dwarven Urgrosh'],
+    stability: true,
+    stonecunning: true,
+  },
+  'elf': {
+    saveVsEnchantment: 2,
+    immuneToSleep: true,
+    skillBonus: { kListen: 2, kSearch: 2, kSpot: 2 },
+    weaponProficiency: ['Longsword', 'Rapier', 'Longbow', 'Shortbow'],
+    secretDoorSearch: true,
+  },
+  'gnome': {
+    saveVsIllusions: 1,
+    attackVsKoboldGoblinoid: 1,
+    acVsGiants: 4,
+    skillBonus: { kListen: 2 },
+    weaponFamiliarity: ['Gnome Hooked Hammer'],
+    spellLikeAbilities: ['Speak with Animals (burrowing, 1/day)'],
+  },
+  'half-elf': {
+    saveVsEnchantment: 2,
+    immuneToSleep: true,
+    skillBonus: { kListen: 1, kSearch: 1, kSpot: 1, kDiplomacy: 1, kGatherInf: 1 },
+  },
+  'half-orc': {
+    weaponFamiliarity: ['Orc Double Axe'],
+  },
+  'halfling': {
+    saveVsFear: 2,
+    attackWithThrown: 1,
+    skillBonus: { kClimb: 2, kJump: 2, kListen: 2, kMoveSil: 2 },
+  },
+  'drow': {
+    saveVsSpells: 2,
+    weaponProficiency: ['Hand Crossbow', 'Rapier', 'Short Sword'],
+    spellLikeAbilities: ['Dancing Lights (1/day)', 'Darkness (1/day)', 'Faerie Fire (1/day)'],
+    lightBlindness: true,
+  },
+  'duergar': {
+    saveVsSpells: 2,
+    immuneToParalysis: true,
+    immuneToPoison: true,
+    immuneToPhantasms: true,
+    spellLikeAbilities: ['Enlarge Person (self, 1/day)', 'Invisibility (self, 1/day)'],
+    lightSensitivity: true,
+    skillBonus: { kMoveSil: 4, kListen: 1, kSpot: 1, kAppraise: 2 },
+  },
+  'svirfneblin': {
+    saveVsSpells: 2,
+    skillBonus: { kListen: 2 },
+    nondetection: true,
+  },
+  'aasimar': {
+    resistAcid: 5, resistCold: 5, resistElectricity: 5,
+    skillBonus: { kListen: 2, kSpot: 2 },
+    spellLikeAbilities: ['Daylight (1/day)'],
+  },
+  'tiefling': {
+    resistCold: 5, resistFire: 5, resistElectricity: 5,
+    skillBonus: { kBluff: 2, kHide: 2 },
+    spellLikeAbilities: ['Darkness (1/day)'],
+  },
+  'air genasi': { saveVsAir: 2, spellLikeAbilities: ['Levitate (self, 1/day)'] },
+  'earth genasi': { spellLikeAbilities: ['Pass Without Trace (self, 1/day)'] },
+  'fire genasi': { resistFire: 5, spellLikeAbilities: ['Control Flame (1/day)'] },
+  'water genasi': { swimSpeed: 30, spellLikeAbilities: ['Create Water (1/day)'] },
+  'goliath': {
+    powerfulBuild: true,
+    skillBonus: { kClimb: 2, kJump: 2, kSurvival: 2 },
+  },
+  'raptoran': {
+    skillBonus: { kClimb: 2, kSpot: 2 },
+    gliding: true,
+    unerringDirection: true,
+  },
+  'elan': {
+    psionicAbilities: ['Repletion (1pp)', 'Resistance (2pp)', 'Resilience (1pp)'],
+  },
+  'githzerai': {
+    saveVsSpells: 2,
+    psionicAbilities: ['Inertial Armor (constant +4 AC)'],
+  },
+  'githyanki': {
+    saveVsSpells: 2,
+    psionicAbilities: ['Mage Hand (at will)', 'Daze (at will)'],
+  },
+};
+
+export function getRacialBenefits(char) {
+  if (!char.race) return null;
+  const raceName = (typeof char.race === 'string' ? char.race : char.race?.name || '').toLowerCase();
+  const raceId   = (char.race?.id || '').toLowerCase();
+  return RACIAL_BENEFITS[raceName]
+      || RACIAL_BENEFITS[raceId]
+      || Object.entries(RACIAL_BENEFITS).find(([k]) => raceName.includes(k) || raceId.includes(k))?.[1]
+      || null;
+}
+
 // ─── PART 1: Default Character State ─────────────────────────────────────────
 
 export function getDefaultCharacter() {
@@ -261,6 +373,7 @@ export function getDerivedStats(char) {
                    + (race?.naturalArmor||0) + (misc.naturalArmor||0) + (misc.deflection||0);
 
   // Saves
+  const benefits = getRacialBenefits(char);
   const fort = cls.baseFort + mods.con + (misc.fort||0);
   const ref  = cls.baseRef  + mods.dex + (misc.ref ||0);
   const will = cls.baseWill + mods.wis + (misc.will||0);
@@ -291,6 +404,15 @@ export function getDerivedStats(char) {
 
   const spentSkillPoints = getSkillPointsSpent(char);
 
+  const racialSaveBonuses = {
+    fort: benefits?.saveVsPoison ? `+${benefits.saveVsPoison} vs poison` : null,
+    ref:  null,
+    will: benefits?.saveVsEnchantment ? `+${benefits.saveVsEnchantment} vs enchantment` : null,
+    vsSpells: benefits?.saveVsSpells ? `+${benefits.saveVsSpells} vs spells` : null,
+    vsFear: benefits?.saveVsFear ? `+${benefits.saveVsFear} vs fear` : null,
+    vsIllusions: benefits?.saveVsIllusions ? `+${benefits.saveVsIllusions} vs illusions` : null,
+  };
+
   return {
     scores, mods,
     maxHP, currentHP, tempHP: char.hp?.tempHP || 0,
@@ -311,6 +433,8 @@ export function getDerivedStats(char) {
     totalWeight, carryMed, carryHvy,
     sizeValue: SIZE_VALUE[size] || 0,
     size,
+    racialSaveBonuses,
+    racialBenefits: benefits,
   };
 }
 
@@ -373,17 +497,21 @@ export const SKILL_LIST = [
 export function getSkillTotals(char) {
   const stats = getDerivedStats(char);
   const mods  = stats.mods;
+  const benefits = getRacialBenefits(char);
+  const racialSkillBonus = benefits?.skillBonus || {};
 
   return SKILL_LIST.map(skill => {
     const isClass  = stats.classSkills.includes(skill.id);
     const ranks    = (char.skillRanks || {})[skill.id] || 0;
     const maxRanks = isClass ? stats.maxClassRanks : stats.maxCrossRanks;
     const hideMod  = skill.id === 'kHide' ? (SIZE_HIDE_MOD[stats.size]||0) : 0;
+    const racialBonus = racialSkillBonus[skill.id] || 0;
     const misc     = (char.skillMisc || {})[skill.id] || 0;
     return {
       ...skill, isClass, ranks, maxRanks,
       abilityMod: mods[skill.ability] || 0,
-      total: ranks + (mods[skill.ability]||0) + misc + hideMod,
+      racialBonus,
+      total: ranks + (mods[skill.ability]||0) + misc + hideMod + racialBonus,
       miscMod: misc,
       pointCost: isClass ? 1 : 2,
       overMax: ranks > maxRanks,

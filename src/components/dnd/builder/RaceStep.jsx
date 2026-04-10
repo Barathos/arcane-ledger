@@ -3,6 +3,7 @@ import SectionCard from '../SectionCard';
 import RaceBrowser from './RaceBrowser';
 import { Button } from '@/components/ui/button';
 import { Shield, BookOpen, ExternalLink } from 'lucide-react';
+import { getRacialBenefits, SKILL_LIST } from '../../../lib/characterEngine';
 
 export default function RaceStep({ character, updateCharacter }) {
   const [showBrowser, setShowBrowser] = useState(false);
@@ -108,6 +109,61 @@ export default function RaceStep({ character, updateCharacter }) {
             </div>
           </div>
         )}
+
+        {raceData && (() => {
+          const benefits = getRacialBenefits(character);
+          if (!benefits) return null;
+          return (
+            <div className="mt-4 border-t border-border pt-4">
+              <p className="text-xs text-muted-foreground mb-2 font-crimson uppercase tracking-wide">
+                Active Racial Mechanics
+              </p>
+              <div className="space-y-1 text-xs font-crimson">
+                {benefits.bonusFeatAtL1 && (
+                  <div className="flex items-center gap-2 text-green-400">
+                    <span>✓</span> Bonus feat at 1st level
+                  </div>
+                )}
+                {benefits.extraSkillPointPerLevel && (
+                  <div className="flex items-center gap-2 text-green-400">
+                    <span>✓</span> +1 skill point per level (+4 at 1st)
+                  </div>
+                )}
+                {benefits.skillBonus && Object.entries(benefits.skillBonus).map(([skillId, bonus]) => {
+                  const skillName = SKILL_LIST.find(s => s.id === skillId)?.name || skillId;
+                  return (
+                    <div key={skillId} className="flex items-center gap-2 text-blue-300">
+                      <span>+</span> +{bonus} to {skillName}
+                    </div>
+                  );
+                })}
+                {benefits.saveVsPoison && <div className="text-yellow-300">✦ +{benefits.saveVsPoison} saves vs poison</div>}
+                {benefits.saveVsSpells && <div className="text-yellow-300">✦ +{benefits.saveVsSpells} saves vs spells/SLAs</div>}
+                {benefits.saveVsEnchantment && <div className="text-yellow-300">✦ +{benefits.saveVsEnchantment} saves vs enchantment</div>}
+                {benefits.saveVsFear && <div className="text-yellow-300">✦ +{benefits.saveVsFear} saves vs fear</div>}
+                {benefits.saveVsIllusions && <div className="text-yellow-300">✦ +{benefits.saveVsIllusions} saves vs illusions</div>}
+                {benefits.weaponProficiency?.length > 0 && (
+                  <div className="text-purple-300">⚔ Free proficiency: {benefits.weaponProficiency.join(', ')}</div>
+                )}
+                {benefits.weaponFamiliarity?.length > 0 && (
+                  <div className="text-purple-300">⚔ Weapon familiarity: {benefits.weaponFamiliarity.join(', ')}</div>
+                )}
+                {benefits.spellLikeAbilities?.length > 0 && (
+                  <div className="text-indigo-300">✨ Spell-like: {benefits.spellLikeAbilities.join(' • ')}</div>
+                )}
+                {benefits.psionicAbilities?.length > 0 && (
+                  <div className="text-indigo-300">⊕ Psionic: {benefits.psionicAbilities.join(' • ')}</div>
+                )}
+                {benefits.powerfulBuild && <div className="text-orange-300">◈ Powerful Build</div>}
+                {benefits.immuneToSleep && <div className="text-green-300">◈ Immune to magic sleep</div>}
+                {benefits.immuneToPoison && <div className="text-green-300">◈ Immune to poison</div>}
+                {benefits.immuneToParalysis && <div className="text-green-300">◈ Immune to paralysis</div>}
+                {benefits.lightBlindness && <div className="text-red-400">⚠ Light blindness in sunlight</div>}
+                {benefits.lightSensitivity && <div className="text-red-400">⚠ Light sensitivity</div>}
+              </div>
+            </div>
+          );
+        })()}
 
         {!raceData && (
           <div className="text-center py-8">

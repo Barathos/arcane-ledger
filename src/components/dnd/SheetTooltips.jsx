@@ -272,6 +272,7 @@ export function getStatBreakdown(char, statName) {
       const rows = [{ label: 'Base save (class)', value: stats.baseFort }];
       if (mods.con !== 0) rows.push({ label: `CON modifier (${scores.con})`, value: mods.con });
       if (misc.fort) rows.push({ label: 'Misc/Magic', value: misc.fort });
+      if (stats.racialSaveBonuses?.fort) rows.push({ label: 'Racial bonus', value: stats.racialSaveBonuses.fort });
       return { rows, total: stats.fort, label: 'Fortitude Save' };
     }
 
@@ -286,6 +287,7 @@ export function getStatBreakdown(char, statName) {
       const rows = [{ label: 'Base save (class)', value: stats.baseWill }];
       if (mods.wis !== 0) rows.push({ label: `WIS modifier (${scores.wis})`, value: mods.wis });
       if (misc.will) rows.push({ label: 'Misc/Magic', value: misc.will });
+      if (stats.racialSaveBonuses?.will) rows.push({ label: 'Racial bonus', value: stats.racialSaveBonuses.will });
       return { rows, total: stats.will, label: 'Will Save' };
     }
 
