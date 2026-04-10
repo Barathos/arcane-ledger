@@ -90,8 +90,9 @@ export function getAbilityScores(char) {
   const totalLevel = getTotalLevel(char);
   const misc = char.miscMods || {};
 
-  const readBase   = (s) => base[s] ?? base[s.toUpperCase()] ?? 10;
-  const readRacial = (s) => racial[s] ?? racial[s.toUpperCase()] ?? 0;
+  // Prefer uppercase (set by AbilityStep) over lowercase (defaults)
+  const readBase   = (s) => base[s.toUpperCase()] ?? base[s] ?? 10;
+  const readRacial = (s) => racial[s.toUpperCase()] ?? racial[s] ?? 0;
 
   const increases = { str:0, dex:0, con:0, int:0, wis:0, cha:0 };
 
