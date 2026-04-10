@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { calculateMaxHP, getAbilityMods, getAbilityScores } from '../../../lib/characterEngine';
@@ -29,6 +30,23 @@ export default function HitPointsStep({ character, updateCharacter }) {
   // Rolls stored as [{level, classHD, value}]
   const rolls = character.hp?.rolls || [];
   const getRollValue = (lvl) => rolls.find(r => r.level === lvl)?.value ?? null;
+
+  // Auto-save level 1 on mount so calculateMaxHP stays consistent
+  useEffect(() => {
+    if (levelRows.length === 0) return;
+    const level1 = levelRows[0];
+    const alreadySaved = rolls.find(r => r.level === 1);
+    if (!alreadySaved) {
+      const others = rolls.filter(r => r.level !== 1);
+      updateCharacter({
+        hp: {
+          ...character.hp,
+          rolls: [{ level: 1, classHD: level1.hd, value: level1.hd }, ...others]
+            .sort((a, b) => a.level - b.level),
+        }
+      });
+    }
+  }, [levelRows.length]);
 
   const setRoll = (charLevel, hd, raw) => {
     const val = Math.max(1, Math.min(hd, parseInt(raw) || 1));

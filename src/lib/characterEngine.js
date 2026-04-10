@@ -338,10 +338,35 @@ export function getClassStats(char) {
 
 export function calculateMaxHP(char) {
   const mods = getAbilityMods(char);
-  const rolls = char.hp?.rolls || [];
   const customHPBonus = getCustomModSum(char, 'maxHP');
-  if (rolls.length === 0) return Math.max(1, mods.con + customHPBonus);
-  return Math.max(1, rolls.reduce((sum, r) => sum + r.value, 0) + mods.con * rolls.length + customHPBonus);
+  const rolls = char.hp?.rolls || [];
+
+  // Build the expected level list from classes
+  let levelCounter = 0;
+  const levelList = [];
+  for (const cls of (char.classes || [])) {
+    for (let i = 1; i <= (cls.levels || 0); i++) {
+      levelCounter++;
+      levelList.push({ charLevel: levelCounter, hd: cls.hd || 8, isFirst: levelCounter === 1 });
+    }
+  }
+
+  if (levelList.length === 0) return 0;
+
+  // Sum each level: use saved roll, or HD for level 1, or 0 for unfilled levels
+  let total = 0;
+  for (const row of levelList) {
+    const saved = rolls.find(r => r.level === row.charLevel);
+    if (saved) {
+      total += Math.max(1, saved.value + mods.con);
+    } else if (row.isFirst) {
+      // Level 1 always max even if not saved
+      total += Math.max(1, row.hd + mods.con);
+    }
+    // Unfilled levels above 1 contribute 0 (not yet rolled)
+  }
+
+  return Math.max(1, total + customHPBonus);
 }
 
 export function getHPStatus(current, max, con) {
