@@ -39,7 +39,7 @@ export default function RaceStep({ character, updateCharacter }) {
       <SectionCard title="Race Selection">
         <div className="flex items-center gap-3 mb-4">
           <div className="flex-1">
-            <p className="font-cinzel text-2xl font-bold text-primary">{character.race || 'None Selected'}</p>
+            <p className="font-cinzel text-2xl font-bold text-primary">{(typeof character.race === 'string' ? character.race : character.race?.name) || 'None Selected'}</p>
             {raceData?.source && <p className="text-xs text-muted-foreground font-crimson">{raceData.source}</p>}
           </div>
           <Button onClick={() => setShowBrowser(true)} className="bg-primary text-primary-foreground font-cinzel">
