@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BasicInfoStep from './builder/BasicInfoStep';
 import RaceStep from './builder/RaceStep';
 import ClassStep from './builder/ClassStep';
-import AbilityStep from './builder/AbilityStep.jsx';
+import AbilityStep from './builder/AbilityStep.jsx'
 import HitPointsStep from './builder/HitPointsStep';
 import SkillsStep from './builder/SkillsStep';
 import FeatsStep from './builder/FeatsStep';
