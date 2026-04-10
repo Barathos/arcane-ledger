@@ -172,12 +172,19 @@ export function getStatBreakdown(char, statName) {
   switch (statName) {
     case 'str': case 'dex': case 'con': case 'int': case 'wis': case 'cha': {
       const rows = [];
-      rows.push({ label: 'Base score', value: char.baseAbilities[statName] || 10 });
-      const racialMod = race?.abilityMods?.[statName] || 0;
+      // baseAbilities may use uppercase (AbilityStep) or lowercase keys
+      const base = char.baseAbilities || {};
+      const baseScore = base[statName.toUpperCase()] ?? base[statName] ?? 10;
+      rows.push({ label: 'Base score', value: baseScore });
+      const racialMod = (race?.abilityMods?.[statName.toUpperCase()] || race?.abilityMods?.[statName]) || 0;
       if (racialMod) rows.push({ label: `Racial (${race.name})`, value: racialMod });
-      const increases = (char.abilityIncreases || []).filter(i => i.stat === statName && i.atLevel <= stats.totalLevel);
-      if (increases.length) rows.push({ label: `Level increases (×${increases.length})`, value: increases.length });
-      const miscMod = misc[statName] || 0;
+      // Format A: abilityIncreases [{atLevel, stat}]
+      const increasesA = (char.abilityIncreases || []).filter(i => i.stat?.toLowerCase() === statName && i.atLevel <= stats.totalLevel).length;
+      // Format B: levelUpAbilities {4: 'STR', 8: 'DEX'}
+      const increasesB = Object.entries(char.levelUpAbilities || {}).filter(([lvl, st]) => st?.toLowerCase() === statName && parseInt(lvl) <= stats.totalLevel).length;
+      const totalIncreases = increasesA + increasesB;
+      if (totalIncreases) rows.push({ label: `Level increases (×${totalIncreases})`, value: totalIncreases });
+      const miscMod = misc[statName] || misc[statName.toUpperCase()] || 0;
       if (miscMod) rows.push({ label: 'Misc/Magic', value: miscMod });
       return { rows, total: scores[statName], label: statName.toUpperCase() + ' Score', isScore: true };
     }
