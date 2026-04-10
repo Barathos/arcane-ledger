@@ -8,8 +8,10 @@ import { getRacialBenefits, SKILL_LIST } from '../../../lib/characterEngine';
 export default function RaceStep({ character, updateCharacter }) {
   const [showBrowser, setShowBrowser] = useState(false);
 
-  // Prefer SRD data if available
+  // Prefer srdRaceData (old format) but fall back to character.race object (new format)
   const srdData = character.srdRaceData;
+  const raceObj = typeof character.race === 'object' ? character.race : null;
+
   const raceData = srdData ? {
     size: srdData.size,
     speed: srdData.speed,
@@ -25,6 +27,26 @@ export default function RaceStep({ character, updateCharacter }) {
     LA: srdData.LA,
     darkvision: srdData.darkvision,
     lowLightVision: srdData.lowLightVision,
+  } : raceObj ? {
+    // New format — race object from RaceBrowser / characterEngine DB
+    size: raceObj.size || 'Medium',
+    speed: raceObj.speed || 30,
+    favoredClass: raceObj.favoredClass || '—',
+    abilityMods: (() => {
+      const m = {};
+      Object.entries(raceObj.abilityMods || {}).forEach(([k, v]) => { if (v !== 0) m[k] = v; });
+      return m;
+    })(),
+    traits: [],
+    source: raceObj.source || '',
+    srdUrl: null,
+    LA: raceObj.LA || 0,
+    darkvision: raceObj.darkvision || 0,
+    lowLightVision: raceObj.lowLightVision || false,
+    naturalArmor: raceObj.naturalArmor || 0,
+    SR: raceObj.SR || null,
+    racialHD: raceObj.racialHD || 0,
+    languages: raceObj.languages || '',
   } : null;
 
   if (showBrowser) {
@@ -87,7 +109,31 @@ export default function RaceStep({ character, updateCharacter }) {
                   </div>
                 </div>
               )}
-              {raceData.srdUrl && (
+              {raceData?.languages && (
+                <div className="flex items-center gap-2 text-sm font-crimson">
+                  <span className="text-muted-foreground">Languages:</span>
+                  <span className="text-primary font-semibold">{raceData.languages}</span>
+                </div>
+              )}
+              {raceData?.naturalArmor > 0 && (
+                <div className="flex items-center gap-2 text-sm font-crimson">
+                  <span className="text-muted-foreground">Natural Armor:</span>
+                  <span className="text-primary font-semibold">+{raceData.naturalArmor}</span>
+                </div>
+              )}
+              {raceData?.SR && (
+                <div className="flex items-center gap-2 text-sm font-crimson">
+                  <span className="text-muted-foreground">Spell Resistance:</span>
+                  <span className="text-primary font-semibold">{raceData.SR}</span>
+                </div>
+              )}
+              {raceData?.racialHD > 0 && (
+                <div className="flex items-center gap-2 text-sm font-crimson">
+                  <span className="text-muted-foreground">Racial HD:</span>
+                  <span className="text-primary font-semibold">{raceData.racialHD}d{raceObj?.racialHDType || 8}</span>
+                </div>
+              )}
+              {raceData?.srdUrl && (
                 <a href={raceData.srdUrl} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-crimson">
                   <ExternalLink className="w-3 h-3" /> View full SRD entry
