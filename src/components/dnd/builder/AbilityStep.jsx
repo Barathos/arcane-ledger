@@ -130,10 +130,23 @@ export default function AbilityStep({ character, updateCharacter }) {
       {method === '4d6' && (
         <SectionCard title="4d6 Drop Lowest Roller">
           <div className="space-y-3">
-            <Button onClick={handleRoll} className="font-cinzel gap-2">
-              <Dices className="w-4 h-4" />
-              {rollResults ? 'Re-Roll All' : 'Roll Stats'}
-            </Button>
+            <div className="flex items-center gap-4">
+              <Button onClick={handleRoll} className="font-cinzel gap-2">
+                <Dices className="w-4 h-4" />
+                {rollResults ? 'Re-Roll All' : 'Roll Stats'}
+              </Button>
+              {rollResults && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground font-crimson">Stat Total:</span>
+                  <span className={`font-cinzel text-xl font-bold ${
+                    rollResults.reduce((s, r) => s + r.total, 0) >= 70 ? 'text-green-400' :
+                    rollResults.reduce((s, r) => s + r.total, 0) >= 63 ? 'text-primary' : 'text-red-400'
+                  }`}>
+                    {rollResults.reduce((s, r) => s + r.total, 0)}
+                  </span>
+                </div>
+              )}
+            </div>
 
             {rollResults && (
               <>
