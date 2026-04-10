@@ -67,7 +67,7 @@ export default function EquipmentStep({ character, updateCharacter }) {
     });
   };
   const setMoney = (type, value) => {
-    updateCharacter({ money: { ...character.money, [type]: parseInt(value) || 0 } });
+    updateCharacter({ equipment: { ...character.equipment, currency: { ...character.equipment.currency, [type]: parseInt(value) || 0 } } });
   };
 
   return (
@@ -175,7 +175,7 @@ export default function EquipmentStep({ character, updateCharacter }) {
                   <label className="text-xs text-muted-foreground font-crimson uppercase">{type}</label>
                   <Input
                     type="number"
-                    value={character.money[type] || 0}
+                    value={character.equipment.currency?.[type] || 0}
                     onChange={e => setMoney(type, e.target.value)}
                     className="bg-secondary/50 border-border font-crimson text-sm h-8"
                   />
