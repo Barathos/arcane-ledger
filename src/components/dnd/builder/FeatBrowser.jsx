@@ -74,7 +74,7 @@ function getFeatSlots(character) {
   let slots = totalLevel === 0 ? 0 : Math.ceil(totalLevel / 2);
   
   const benefits = getRacialBenefits(character);
-  if ((benefits?.bonusFeatAtL1 || (character.race?.name === 'Human') || (character.race?.id === 'rHuman2')) && totalLevel >= 1) {
+  if (benefits?.bonusFeatAtL1 || (character.race?.name === 'Human') || (character.race?.id === 'rHuman2')) {
     slots += 1;
   }
 
