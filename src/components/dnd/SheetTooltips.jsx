@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import {
   getDerivedStats, getAbilityScores, getAbilityMods, getClassStats,
-  SIZE_ATTACK_MOD, SIZE_AC_MOD, SIZE_CMB_MOD,
+  SIZE_ATTACK_MOD, SIZE_AC_MOD, SIZE_CMB_MOD, getCustomModSum,
 } from '../../lib/characterEngine';
 import { getFeatDatabase, loadFeatDescriptions, getFeatDescription } from '../../lib/featDatabase';
 
@@ -186,6 +186,10 @@ export function getStatBreakdown(char, statName) {
       if (totalIncreases) rows.push({ label: `Level increases (×${totalIncreases})`, value: totalIncreases });
       const miscMod = misc[statName] || misc[statName.toUpperCase()] || 0;
       if (miscMod) rows.push({ label: 'Misc/Magic', value: miscMod });
+      const customEntries = (char.customMods || []).filter(m => m.stat === statName);
+      customEntries.forEach(m => {
+        rows.push({ label: m.reason + (m.type !== 'untyped' ? ` (${m.type})` : ''), value: m.value });
+      });
       return { rows, total: scores[statName], label: statName.toUpperCase() + ' Score', isScore: true };
     }
 
@@ -232,10 +236,16 @@ export function getStatBreakdown(char, statName) {
       }
       const sizeMod = SIZE_AC_MOD[stats.size] || 0;
       if (sizeMod) rows.push({ label: `Size (${stats.size})`, value: sizeMod });
-      const natArmor = (race?.naturalArmor || 0) + (misc.naturalArmor || 0);
+      const natArmor = (race?.naturalArmor || 0) + (misc.naturalArmor || 0) + getCustomModSum(char, 'naturalArmor');
       if (natArmor) rows.push({ label: 'Natural Armor', value: natArmor });
-      if (misc.deflection) rows.push({ label: 'Deflection', value: misc.deflection });
-      if (misc.ac) rows.push({ label: 'Misc', value: misc.ac });
+      const deflection = (misc.deflection || 0) + getCustomModSum(char, 'deflection');
+      if (deflection) rows.push({ label: 'Deflection', value: deflection });
+      const acCustom = (misc.ac || 0) + getCustomModSum(char, 'ac');
+      if (acCustom) rows.push({ label: 'Misc/Custom', value: acCustom });
+      const customEntries = (char.customMods || []).filter(m => m.stat === 'ac');
+      customEntries.forEach(m => {
+        rows.push({ label: m.reason + (m.type !== 'untyped' ? ` (${m.type})` : ''), value: m.value });
+      });
       return { rows, total: stats.ac, label: 'Armor Class' };
     }
 
@@ -273,6 +283,10 @@ export function getStatBreakdown(char, statName) {
       if (mods.con !== 0) rows.push({ label: `CON modifier (${scores.con})`, value: mods.con });
       if (misc.fort) rows.push({ label: 'Misc/Magic', value: misc.fort });
       if (stats.racialSaveBonuses?.fort) rows.push({ label: 'Racial bonus', value: stats.racialSaveBonuses.fort });
+      const customEntries = (char.customMods || []).filter(m => m.stat === 'fort');
+      customEntries.forEach(m => {
+        rows.push({ label: m.reason + (m.type !== 'untyped' ? ` (${m.type})` : ''), value: m.value });
+      });
       return { rows, total: stats.fort, label: 'Fortitude Save' };
     }
 
@@ -280,6 +294,10 @@ export function getStatBreakdown(char, statName) {
       const rows = [{ label: 'Base save (class)', value: stats.baseRef }];
       if (mods.dex !== 0) rows.push({ label: `DEX modifier (${scores.dex})`, value: mods.dex });
       if (misc.ref) rows.push({ label: 'Misc/Magic', value: misc.ref });
+      const customEntries = (char.customMods || []).filter(m => m.stat === 'ref');
+      customEntries.forEach(m => {
+        rows.push({ label: m.reason + (m.type !== 'untyped' ? ` (${m.type})` : ''), value: m.value });
+      });
       return { rows, total: stats.ref, label: 'Reflex Save' };
     }
 
@@ -288,6 +306,10 @@ export function getStatBreakdown(char, statName) {
       if (mods.wis !== 0) rows.push({ label: `WIS modifier (${scores.wis})`, value: mods.wis });
       if (misc.will) rows.push({ label: 'Misc/Magic', value: misc.will });
       if (stats.racialSaveBonuses?.will) rows.push({ label: 'Racial bonus', value: stats.racialSaveBonuses.will });
+      const customEntries = (char.customMods || []).filter(m => m.stat === 'will');
+      customEntries.forEach(m => {
+        rows.push({ label: m.reason + (m.type !== 'untyped' ? ` (${m.type})` : ''), value: m.value });
+      });
       return { rows, total: stats.will, label: 'Will Save' };
     }
 

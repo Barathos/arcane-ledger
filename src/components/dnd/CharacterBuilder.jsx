@@ -10,6 +10,7 @@ import FeatsStep from './builder/FeatsStep';
 import SpellsStep from './builder/SpellsStep';
 import EquipmentStep from './builder/EquipmentStep';
 import CombatStatsStep from './builder/CombatStatsStep';
+import ModifiersStep from './builder/ModifiersStep';
 
 const STEPS = [
   { id: 'basic', label: 'Basic' },
@@ -22,6 +23,7 @@ const STEPS = [
   { id: 'spells', label: 'Spells' },
   { id: 'equipment', label: 'Equip' },
   { id: 'combat', label: 'Combat' },
+  { id: 'modifiers', label: 'Mods' },
 ];
 
 export default function CharacterBuilder({ character, updateCharacter }) {
@@ -47,6 +49,7 @@ export default function CharacterBuilder({ character, updateCharacter }) {
         <TabsContent value="spells"><SpellsStep character={character} updateCharacter={updateCharacter} /></TabsContent>
         <TabsContent value="equipment"><EquipmentStep character={character} updateCharacter={updateCharacter} /></TabsContent>
         <TabsContent value="combat"><CombatStatsStep character={character} updateCharacter={updateCharacter} /></TabsContent>
+        <TabsContent value="modifiers"><ModifiersStep character={character} updateCharacter={updateCharacter} /></TabsContent>
       </div>
     </Tabs>
   );

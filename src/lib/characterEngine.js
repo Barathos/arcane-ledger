@@ -178,6 +178,9 @@ export function getDefaultCharacter() {
       meleeAttack: 0, rangedAttack: 0, speed: 0,
     },
 
+    // Custom modifiers — magic items, spells, curses, DM rulings
+    customMods: [], // [{id, stat, value, reason, type}]
+
     // Play mode state
     conditions: [],
     combatants: [],
@@ -191,6 +194,14 @@ export function getDefaultCharacter() {
 // ─── PART 2: Ability Score Engine ────────────────────────────────────────────
 
 export const ABILITY_KEYS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+
+// ─── Custom Modifiers Helper ────────────────────────────────────────────────
+
+export function getCustomModSum(char, stat) {
+  return (char.customMods || [])
+    .filter(m => m.stat === stat)
+    .reduce((sum, m) => sum + (m.value || 0), 0);
+}
 
 export function getTotalLevel(char) {
   return (char.classes || []).reduce((sum, c) => sum + (c.levels || 0), 0);
@@ -226,7 +237,7 @@ export function getAbilityScores(char) {
 
   const result = {};
   for (const s of ABILITY_KEYS) {
-    result[s] = readBase(s) + readRacial(s) + increases[s] + (misc[s] ?? misc[s.toUpperCase()] ?? 0);
+    result[s] = readBase(s) + readRacial(s) + increases[s] + (misc[s] ?? misc[s.toUpperCase()] ?? 0) + getCustomModSum(char, s);
   }
   return result;
 }
@@ -327,8 +338,9 @@ export function getClassStats(char) {
 export function calculateMaxHP(char) {
   const mods = getAbilityMods(char);
   const rolls = char.hp?.rolls || [];
-  if (rolls.length === 0) return Math.max(1, mods.con);
-  return Math.max(1, rolls.reduce((sum, r) => sum + r.value, 0) + mods.con * rolls.length);
+  const customHPBonus = getCustomModSum(char, 'maxHP');
+  if (rolls.length === 0) return Math.max(1, mods.con + customHPBonus);
+  return Math.max(1, rolls.reduce((sum, r) => sum + r.value, 0) + mods.con * rolls.length + customHPBonus);
 }
 
 export function getHPStatus(current, max, con) {
@@ -366,32 +378,33 @@ export function getDerivedStats(char) {
   // AC
   const ac = 10 + armorBonus + shieldBonus + mods.dex
            + (SIZE_AC_MOD[size]||0)
-           + (race?.naturalArmor||0) + (misc.naturalArmor||0)
-           + (misc.deflection||0) + (misc.ac||0);
+           + (race?.naturalArmor||0) + (misc.naturalArmor||0) + getCustomModSum(char, 'naturalArmor')
+           + (misc.deflection||0) + getCustomModSum(char, 'deflection')
+           + (misc.ac||0) + getCustomModSum(char, 'ac');
   const touchAC    = 10 + mods.dex + (SIZE_AC_MOD[size]||0) + (misc.deflection||0);
   const flatFootAC = 10 + armorBonus + shieldBonus + (SIZE_AC_MOD[size]||0)
                    + (race?.naturalArmor||0) + (misc.naturalArmor||0) + (misc.deflection||0);
 
   // Saves
   const benefits = getRacialBenefits(char);
-  const fort = cls.baseFort + mods.con + (misc.fort||0);
-  const ref  = cls.baseRef  + mods.dex + (misc.ref ||0);
-  const will = cls.baseWill + mods.wis + (misc.will||0);
+  const fort = cls.baseFort + mods.con + (misc.fort||0) + getCustomModSum(char, 'fort');
+  const ref  = cls.baseRef  + mods.dex + (misc.ref ||0) + getCustomModSum(char, 'ref');
+  const will = cls.baseWill + mods.wis + (misc.will||0) + getCustomModSum(char, 'will');
 
   // Attacks
   const sizeMod  = SIZE_ATTACK_MOD[size] || 0;
-  const meleeAtk = cls.totalBAB + mods.str + sizeMod + (misc.meleeAttack||0);
-  const rangedAtk= cls.totalBAB + mods.dex + sizeMod + (misc.rangedAttack||0);
-  const cmb      = cls.totalBAB + mods.str + (SIZE_CMB_MOD[size]||0);
+  const meleeAtk = cls.totalBAB + mods.str + sizeMod + (misc.meleeAttack||0) + getCustomModSum(char, 'meleeAttack');
+  const rangedAtk= cls.totalBAB + mods.dex + sizeMod + (misc.rangedAttack||0) + getCustomModSum(char, 'rangedAttack');
+  const cmb      = cls.totalBAB + mods.str + (SIZE_CMB_MOD[size]||0) + getCustomModSum(char, 'cmb');
 
   // Speed
   const baseSpeed    = race?.speed || 30;
   const heavyArmor   = char.equipment?.armor?.type === 'heavy';
   const armorPenalty = (heavyArmor && baseSpeed >= 30) ? 10 : 0;
-  const speed        = baseSpeed - armorPenalty + (misc.speed||0);
+  const speed        = baseSpeed - armorPenalty + (misc.speed||0) + getCustomModSum(char, 'speed');
 
   // Initiative
-  const initiative = mods.dex + (misc.initiative||0);
+  const initiative = mods.dex + (misc.initiative||0) + getCustomModSum(char, 'initiative');
 
   // Skill caps
   const maxClassRanks = cls.totalLevel + 3;
@@ -507,11 +520,13 @@ export function getSkillTotals(char) {
     const hideMod  = skill.id === 'kHide' ? (SIZE_HIDE_MOD[stats.size]||0) : 0;
     const racialBonus = racialSkillBonus[skill.id] || 0;
     const misc     = (char.skillMisc || {})[skill.id] || 0;
+    const customBonus = getCustomModSum(char, skill.id);
     return {
       ...skill, isClass, ranks, maxRanks,
       abilityMod: mods[skill.ability] || 0,
       racialBonus,
-      total: ranks + (mods[skill.ability]||0) + misc + hideMod + racialBonus,
+      customBonus,
+      total: ranks + (mods[skill.ability]||0) + misc + hideMod + racialBonus + customBonus,
       miscMod: misc,
       pointCost: isClass ? 1 : 2,
       overMax: ranks > maxRanks,

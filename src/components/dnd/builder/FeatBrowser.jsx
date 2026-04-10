@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { loadFeatDatabase, getFeatDatabase, FEAT_CATEGORIES, loadFeatDescriptions, getFeatDescription } from '../../../lib/featDatabase';
-import { checkAllPrereqs, getTotalLevel, buildCharacterState, SKILL_LIST, getRacialBenefits } from '../../../lib/characterEngine';
+import { checkAllPrereqs, getTotalLevel, buildCharacterState, SKILL_LIST, getRacialBenefits, getCustomModSum } from '../../../lib/characterEngine';
 import { X } from 'lucide-react';
 
 const COMMON_WEAPONS = ['Longsword','Shortsword','Rapier','Greatsword','Battleaxe','Greataxe','Dagger','Handaxe','Warhammer','Longbow','Shortbow','Crossbow, Heavy','Spear','Quarterstaff','Flail','Mace, Heavy'];
@@ -80,12 +80,13 @@ function getFeatSlots(character) {
 
   const fighterLevels = (character.classes || []).find(c => c.name === 'Fighter')?.levels || 0;
   const fighterBonusSlots = fighterLevels > 0 ? 1 + Math.floor(fighterLevels / 2) : 0;
+  const extraFeatSlots = getCustomModSum(character, 'featSlots');
 
   // noCount feats (override + don't count) are excluded from slot consumption
   const takenRegular = (character.feats || []).filter(f => !f.isFighterBonus && !f.noCount).length;
   const takenFighter = (character.feats || []).filter(f => f.isFighterBonus && !f.noCount).length;
 
-  return { slots, fighterBonusSlots, takenRegular, takenFighter, totalLevel };
+  return { slots: slots + extraFeatSlots, fighterBonusSlots, takenRegular, takenFighter, totalLevel };
 }
 
 function AvailabilityDot({ result, noPrereqs }) {
