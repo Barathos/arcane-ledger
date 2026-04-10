@@ -10,6 +10,20 @@ const CATEGORIES = ['All', 'Weapon', 'Armor', 'Gear', 'Wondrous Item', 'Ring', '
 const PROFICIENCY_COLORS = { Simple: 'text-green-400', Martial: 'text-yellow-400', Exotic: 'text-orange-400' };
 const ARMOR_TYPE_COLORS  = { Light: 'text-green-400', Medium: 'text-yellow-400', Heavy: 'text-red-400', Shield: 'text-blue-400' };
 
+const BODY_SLOTS = [
+  { id: 'Head',      label: 'Head',      max: 1, icon: '👑', hint: 'Circlets, crowns, hats, headbands, helmets, phylacteries' },
+  { id: 'Face',      label: 'Face',      max: 1, icon: '👓', hint: 'Goggles, lenses, masks, spectacles, third eyes' },
+  { id: 'Throat',    label: 'Throat',    max: 1, icon: '📿', hint: 'Amulets, badges, brooches, collars, necklaces, pendants, periapts, scarabs, torcs' },
+  { id: 'Shoulders', label: 'Shoulders', max: 1, icon: '🧣', hint: 'Capes, cloaks, mantles, shawls' },
+  { id: 'Body',      label: 'Body',      max: 1, icon: '🛡', hint: 'Armor, robes' },
+  { id: 'Torso',     label: 'Torso',     max: 1, icon: '👕', hint: 'Shirts, tunics, vests, vestments' },
+  { id: 'Arms',      label: 'Arms',      max: 1, icon: '💪', hint: 'Armbands, bracelets, bracers' },
+  { id: 'Hands',     label: 'Hands',     max: 1, icon: '🧤', hint: 'Gauntlets, gloves' },
+  { id: 'Ring',      label: 'Ring',      max: 2, icon: '💍', hint: 'Rings (2 slots)' },
+  { id: 'Waist',     label: 'Waist',     max: 1, icon: '🎗', hint: 'Belts, girdles, sashes' },
+  { id: 'Feet',      label: 'Feet',      max: 1, icon: '👢', hint: 'Boots, sandals, shoes, slippers' },
+];
+
 function renderMarkdown(text) {
   if (!text) return null;
   return text.split('\n\n').map((para, i) => {
@@ -27,7 +41,7 @@ function formatCost(gp) {
   return `${gp} gp`;
 }
 
-function ItemDetail({ item, onEquip, onClose }) {
+function ItemDetail({ item, onEquip, onEquipToSlot, targetSlot, onClose }) {
   const [desc, setDesc] = useState(() => getItemDescription(item.id));
   const [qty, setQty] = useState(1);
 
@@ -74,7 +88,7 @@ function ItemDetail({ item, onEquip, onClose }) {
         </>}
 
         {/* Magic item stats */}
-        {item.slot && <div><span className="text-muted-foreground">Slot: </span>{item.slot}</div>}
+        {item.slot && <div className="col-span-2"><span className="text-muted-foreground">Slot: </span><span className="text-primary font-semibold">{item.slot || 'Slotless'}</span></div>}
         {item.charges > 0 && <div><span className="text-muted-foreground">Charges: </span>{item.charges}</div>}
       </div>
 
@@ -88,21 +102,119 @@ function ItemDetail({ item, onEquip, onClose }) {
 
       {/* Add to equipment */}
       <div className="pt-2 border-t border-border">
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-col">
           {(item.category === 'Gear' || item.category === 'Potion/Oil') && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 w-full">
               <span className="text-xs text-muted-foreground font-crimson">Qty:</span>
               <Input type="number" min={1} max={99} value={qty}
                 onChange={e => setQty(Math.max(1,parseInt(e.target.value)||1))}
-                className="h-7 w-16 text-xs bg-secondary/50 text-center" />
+                className="h-7 w-16 text-xs bg-secondary/50 text-center flex-1" />
             </div>
           )}
-          <Button onClick={() => onEquip(item, qty)} className="flex-1 font-cinzel text-xs h-8">
-            <Plus className="w-3 h-3 mr-1" /> Add to Equipment
-          </Button>
+          {targetSlot && item.slot === targetSlot && (
+            <Button onClick={() => onEquipToSlot(item, targetSlot)} className="flex-1 w-full font-cinzel text-xs h-8 bg-primary">
+              Equip to {targetSlot} Slot
+            </Button>
+          )}
+          {!targetSlot && (
+            <Button onClick={() => onEquip(item, qty)} className="flex-1 w-full font-cinzel text-xs h-8">
+              <Plus className="w-3 h-3 mr-1" /> Add to Equipment
+            </Button>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function PaperDoll({ character, updateCharacter, onBrowseSlot }) {
+  const slotted = character.equipment?.slottedItems || {};
+
+  const getSlotItems = (slotId) => {
+    const items = slotted[slotId];
+    if (!items) return [];
+    return Array.isArray(items) ? items : [items];
+  };
+
+  const removeSlotItem = (slotId, idx) => {
+    const items = [...getSlotItems(slotId)];
+    items.splice(idx, 1);
+    updateCharacter({ equipment: {
+      ...character.equipment,
+      slottedItems: { ...slotted, [slotId]: items.length === 0 ? undefined : items }
+    }});
+  };
+
+  return (
+    <SectionCard title="Paper Doll — Worn Items">
+      <p className="text-xs text-muted-foreground font-crimson mb-3">
+        Click a slot to browse items for that slot. Rings allow 2 items, all others allow 1.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        {BODY_SLOTS.map(slot => {
+          const items = getSlotItems(slot.id);
+          const full = items.length >= slot.max;
+          return (
+            <div key={slot.id} className={`border rounded-lg p-2 transition-colors ${
+              full ? 'border-primary/40 bg-primary/5' : 'border-border bg-secondary/20 hover:border-primary/30'
+            }`}>
+              {/* Slot header */}
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm">{slot.icon}</span>
+                  <span className="font-cinzel text-xs text-primary">{slot.label}</span>
+                  {slot.max > 1 && (
+                    <span className="text-xs text-muted-foreground">×{slot.max}</span>
+                  )}
+                </div>
+                {!full && (
+                  <button
+                    onClick={() => onBrowseSlot(slot.id)}
+                    className="text-xs text-primary hover:text-primary/80 font-cinzel"
+                    title={`Browse ${slot.hint}`}
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+
+              {/* Equipped items */}
+              {items.length === 0 ? (
+                <button
+                  onClick={() => onBrowseSlot(slot.id)}
+                  className="w-full text-left text-xs text-muted-foreground/40 font-crimson italic hover:text-muted-foreground/70 transition-colors py-1"
+                  title={slot.hint}
+                >
+                  Empty — {slot.hint.split(',')[0]}...
+                </button>
+              ) : (
+                <div className="space-y-1">
+                  {items.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-1 group">
+                      <span className="font-crimson text-xs flex-1 truncate text-foreground/90" title={item.name}>
+                        {item.name}
+                      </span>
+                      <button
+                        onClick={() => removeSlotItem(slot.id, idx)}
+                        className="opacity-0 group-hover:opacity-100 text-red-400 shrink-0"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {items.length < slot.max && (
+                    <button onClick={() => onBrowseSlot(slot.id)}
+                      className="text-xs text-muted-foreground/40 font-crimson italic hover:text-muted-foreground/70 w-full text-left">
+                      + add another
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -112,6 +224,7 @@ export default function EquipmentStep({ character, updateCharacter }) {
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [slotFilter, setSlotFilter] = useState(null);
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
@@ -124,19 +237,47 @@ export default function EquipmentStep({ character, updateCharacter }) {
     return ['all', ...Array.from(s).sort()];
   }, [items]);
 
+  const handleBrowseSlot = (slotId) => {
+    setSlotFilter(slotId);
+    setCategory('Wondrous Item');
+    setSearch('');
+    document.getElementById('equip-browser')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const equipToSlot = (item, slotId) => {
+    const slotDef = BODY_SLOTS.find(s => s.id === slotId);
+    if (!slotDef) return;
+    const slotted = { ...(character.equipment?.slottedItems || {}) };
+    const existing = Array.isArray(slotted[slotId]) ? slotted[slotId] : (slotted[slotId] ? [slotted[slotId]] : []);
+    if (existing.length >= slotDef.max) return;
+    slotted[slotId] = [...existing, { id: item.id, name: item.name, cost: item.cost, weight: item.weight || 0 }];
+    updateCharacter({ equipment: { ...character.equipment, slottedItems: slotted } });
+    setSelected(null);
+  };
+
   const filtered = useMemo(() => {
     let list = items;
     if (category !== 'All') list = list.filter(i => i.category === category);
     if (sourceFilter !== 'all') list = list.filter(i => i.source === sourceFilter);
+    
+    // Slot filter (wondrous items only)
+    if (slotFilter && category === 'Wondrous Item') {
+      if (slotFilter === 'Slotless') {
+        list = list.filter(i => !i.slot || i.slot === '');
+      } else {
+        list = list.filter(i => i.slot === slotFilter);
+      }
+    }
+    
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(i => i.name.toLowerCase().includes(q));
     }
     return list;
-  }, [items, category, sourceFilter, search]);
+  }, [items, category, sourceFilter, search, slotFilter]);
 
   const addItem = (item, qty = 1) => {
-    const equip = character.equipment || { weapons:[], armor:null, shield:null, gear:[], currency:{pp:0,gp:0,sp:0,cp:0} };
+    const equip = character.equipment || { weapons:[], armor:null, shield:null, gear:[], slottedItems:{}, currency:{pp:0,gp:0,sp:0,cp:0} };
 
     if (item.category === 'Weapon') {
       const weapons = [...(equip.weapons || [])];
@@ -181,9 +322,11 @@ export default function EquipmentStep({ character, updateCharacter }) {
   };
 
   const equip = character.equipment || {};
-  const totalWeight = (equip.weapons||[]).reduce((s,w)=>s+(w.weight||0)*(w.qty||1),0)
-    + (equip.armor?.weight||0) + (equip.shield?.weight||0)
-    + (equip.gear||[]).reduce((s,g)=>s+(g.weight||0)*(g.qty||1),0);
+  const wepWeight = (equip.weapons||[]).reduce((s,w)=>s+(w.weight||0)*(w.qty||1),0);
+  const armorWeight = (equip.armor?.weight||0) + (equip.shield?.weight||0);
+  const gearWeight = (equip.gear||[]).reduce((s,g)=>s+(g.weight||0)*(g.qty||1),0);
+  const slottedWeight = Object.values(equip.slottedItems||{}).flat().reduce((s,i)=>s+(i?.weight||0),0);
+  const totalWeight = wepWeight + armorWeight + gearWeight + slottedWeight;
 
   const currency = equip.currency || { pp:0, gp:0, sp:0, cp:0 };
   const updateCurrency = (coin, val) => updateCharacter({
@@ -192,6 +335,9 @@ export default function EquipmentStep({ character, updateCharacter }) {
 
   return (
     <div className="space-y-4">
+      {/* Paper doll */}
+      <PaperDoll character={character} updateCharacter={updateCharacter} onBrowseSlot={handleBrowseSlot} />
+
       {/* Currently equipped */}
       <SectionCard title={`Equipped — ${totalWeight.toFixed(1)} lb total`}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -276,7 +422,7 @@ export default function EquipmentStep({ character, updateCharacter }) {
       </SectionCard>
 
       {/* Browser */}
-      <SectionCard title="Equipment Browser">
+      <SectionCard title="Equipment Browser" id="equip-browser">
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-3 items-center">
           <Input value={search} onChange={e => setSearch(e.target.value)}
@@ -290,10 +436,28 @@ export default function EquipmentStep({ character, updateCharacter }) {
           </Select>
         </div>
 
+        {/* Slot filter row */}
+        {category === 'Wondrous Item' && (
+          <div className="flex flex-wrap gap-1 mb-3 items-center">
+            <span className="text-xs text-muted-foreground font-crimson">Slot:</span>
+            {['All Slots', ...BODY_SLOTS.map(s => s.id), 'Slotless'].map(s => (
+              <button key={s}
+                onClick={() => setSlotFilter(s === 'All Slots' ? null : s)}
+                className={`text-xs px-2 py-0.5 rounded font-crimson transition-colors ${
+                  (s === 'All Slots' && !slotFilter) || slotFilter === s
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                }`}>
+                {s === 'Slotless' ? s : s === 'All Slots' ? s : BODY_SLOTS.find(b => b.id === s)?.label || s}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Category tabs */}
         <div className="flex overflow-x-auto gap-1 pb-1 mb-3">
           {CATEGORIES.map(cat => (
-            <button key={cat} onClick={() => setCategory(cat)}
+            <button key={cat} onClick={() => { setCategory(cat); if (cat !== 'Wondrous Item') setSlotFilter(null); }}
               className={`shrink-0 text-xs px-2.5 py-1 rounded font-cinzel transition-colors ${
                 category === cat ? 'bg-primary text-primary-foreground' : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
               }`}>
@@ -345,7 +509,7 @@ export default function EquipmentStep({ character, updateCharacter }) {
 
           {selected && (
             <div className="w-80 shrink-0 border border-border rounded-lg bg-secondary/10 overflow-hidden">
-              <ItemDetail item={selected} onEquip={addItem} onClose={() => setSelected(null)} />
+              <ItemDetail item={selected} onEquip={addItem} onEquipToSlot={equipToSlot} targetSlot={slotFilter} onClose={() => setSelected(null)} />
             </div>
           )}
         </div>
